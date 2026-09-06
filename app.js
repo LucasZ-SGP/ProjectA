@@ -32,7 +32,22 @@ const store = {
 
 let DATA = { jobs: [], counts: {}, profileSnapshot: {} };
 let COMPANIES = {};
-let JOB_STATE = store.get(LS.state, {}); // id -> "saved" | "dismissed"
+// id -> { status: 'saved' | 'applied' | 'dismissed', at: 'YYYY-MM-DD' }
+// Earlier versions stored a bare string, so migrate anything of that shape.
+let JOB_STATE = migrateState(store.get(LS.state, {}));
+let VIEW = 'all';
+
+function migrateState(raw) {
+  const out = {};
+  for (const [id, v] of Object.entries(raw || {})) {
+    if (typeof v === 'string') out[id] = { status: v, at: null };
+    else if (v && v.status) out[id] = v;
+  }
+  return out;
+}
+
+const today = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD, local
+const statusOf = (id) => JOB_STATE[id]?.status ?? null;
 
 /* ----------------------------------------------------------- GitHub API --- */
 
@@ -88,11 +103,13 @@ async function load({ silent = false } = {}) {
     setMsg('', '');
     el('setup').hidden = true;
     el('stats').hidden = false;
+    el('views').hidden = false;
     el('controls').hidden = false;
     el('generatedAt').textContent = DATA.generatedAt
       ? `updated ${timeAgo(DATA.generatedAt)}`
       : '';
     renderStats();
+    renderCounts();
     render();
   } catch (err) {
     setStatus('err');
@@ -156,8 +173,25 @@ function render() {
   const f = currentFilters();
   store.set(LS.filters, f);
 
+  // Saved and Applied are lists, not filters: they ignore the filter bar
+  // entirely, because a job you have already applied to should never vanish
+  // because today's minimum-fit setting moved.
+  if (VIEW !== 'all') {
+    const wanted = DATA.jobs.filter((j) => statusOf(j.id) === VIEW);
+    wanted.sort((a, b) => String(JOB_STATE[b.id].at || '').localeCompare(String(JOB_STATE[a.id].at || '')));
+    el('resultCount').textContent = `${wanted.length} ${VIEW}`;
+    el('list').replaceChildren(...wanted.map(card));
+    const emptyEl = el('empty');
+    emptyEl.hidden = wanted.length > 0;
+    emptyEl.textContent =
+      VIEW === 'applied'
+        ? 'Nothing marked as applied yet. Use the Applied button on a card.'
+        : 'Nothing saved yet. Use the Save button on a card.';
+    return;
+  }
+
   let jobs = DATA.jobs.filter((j) => {
-    if (JOB_STATE[j.id] === 'dismissed' && !f.showHidden) return false;
+    if (statusOf(j.id) === 'dismissed' && !f.showHidden) return false;
     if (!passesGrade(j, f.minGrade)) return false;
     if ((j.credibility?.score ?? 50) < f.minCred) return false;
     if (f.hideAgency && j.isAgency) return false;
@@ -180,8 +214,9 @@ function render() {
   }[f.sortBy] || ((a, b) => gradeRank(b) - gradeRank(a));
   jobs = jobs.slice().sort(cmp);
 
-  // Saved jobs float to the top regardless of sort.
-  jobs.sort((a, b) => (JOB_STATE[b.id] === 'saved') - (JOB_STATE[a.id] === 'saved'));
+  // Saved and applied jobs float to the top regardless of sort.
+  const pinned = (id) => (statusOf(id) === 'saved' ? 2 : statusOf(id) === 'applied' ? 1 : 0);
+  jobs.sort((a, b) => pinned(b.id) - pinned(a.id));
 
   el('resultCount').textContent = `${jobs.length} shown`;
 
@@ -219,7 +254,7 @@ const CRED_LABEL = {
 function card(job) {
   const node = el('jobTpl').content.cloneNode(true);
   const root = node.querySelector('.job');
-  const state = JOB_STATE[job.id];
+  const state = statusOf(job.id);
   if (state) root.classList.add(state);
 
   // Fit grade (from the reading pass) and provenance (from the rules).
@@ -245,6 +280,9 @@ function card(job) {
 
   const company = COMPANIES[job.companyKey];
   const badges = node.querySelector('.badges');
+  if (state === 'applied') {
+    badges.append(badge(`applied ${JOB_STATE[job.id].at || ''}`.trim(), 'applied-badge'));
+  }
   if (job.isNew) badges.append(badge('new', 'new'));
   if (job.isAgency) badges.append(badge('agency', 'agency'));
   const tier = job.companyTier ?? company?.tier;
@@ -268,10 +306,10 @@ function card(job) {
       v.headline ? `<p class="a-headline">${escapeHTML(v.headline)}</p>` : '',
       v.why ? `<p class="a-why">${escapeHTML(v.why)}</p>` : '',
       v.matches?.length
-        ? `<div class="a-list a-match"><b>Matches</b><ul>${v.matches.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
+        ? `<div class="a-list a-match"><b>匹配</b><ul>${v.matches.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
         : '',
       v.gaps?.length
-        ? `<div class="a-list a-gap"><b>Gaps</b><ul>${v.gaps.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
+        ? `<div class="a-list a-gap"><b>差距</b><ul>${v.gaps.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
         : '',
       v.compRead ? `<p class="a-comp">${escapeHTML(v.compRead)}</p>` : '',
       v.verdict ? `<p class="a-verdict">${escapeHTML(v.verdict)}</p>` : '',
@@ -286,7 +324,7 @@ function card(job) {
     briefBox.innerHTML = [
       `<b>${escapeHTML(company.name || job.company)}</b> — ${escapeHTML(company.brief)}`,
       company.sgPresence ? `<br>Singapore: ${escapeHTML(company.sgPresence)}` : '',
-      company.watchOuts ? `<br><span class="watch">Watch out: ${escapeHTML(company.watchOuts)}</span>` : '',
+      company.watchOuts ? `<br><span class="watch">注意：${escapeHTML(company.watchOuts)}</span>` : '',
     ].join('');
   } else {
     briefBox.remove();
@@ -314,13 +352,32 @@ function card(job) {
   // Actions
   node.querySelector('.apply').href = job.url;
   const saveBtn = node.querySelector('.save');
+  // Not '.applied': the card root carries that as a state class.
+  const appliedBtn = node.querySelector('.mark-applied');
   const dismissBtn = node.querySelector('.dismiss');
+
   saveBtn.textContent = state === 'saved' ? 'Saved' : 'Save';
   saveBtn.classList.toggle('on', state === 'saved');
+  appliedBtn.classList.toggle('on', state === 'applied');
   dismissBtn.textContent = state === 'dismissed' ? 'Restore' : 'Dismiss';
 
-  saveBtn.onclick = () => toggleState(job.id, 'saved');
-  dismissBtn.onclick = () => toggleState(job.id, 'dismissed');
+  saveBtn.onclick = () => setState(job.id, 'saved');
+  appliedBtn.onclick = () => setState(job.id, 'applied');
+  dismissBtn.onclick = () => setState(job.id, 'dismissed');
+
+  // The date is editable because you often mark a job applied days later.
+  const dateWrap = node.querySelector('.applied-on');
+  const dateInput = node.querySelector('.applied-date');
+  if (state === 'applied') {
+    dateWrap.hidden = false;
+    dateInput.value = JOB_STATE[job.id].at || today();
+    dateInput.max = today();
+    dateInput.onchange = () => {
+      JOB_STATE[job.id].at = dateInput.value || today();
+      store.set(LS.state, JOB_STATE);
+      render();
+    };
+  }
 
   const jd = node.querySelector('.jd');
   const expand = node.querySelector('.expand');
@@ -334,11 +391,18 @@ function card(job) {
   return node;
 }
 
-function toggleState(id, value) {
-  JOB_STATE[id] = JOB_STATE[id] === value ? undefined : value;
-  if (!JOB_STATE[id]) delete JOB_STATE[id];
+function setState(id, value) {
+  if (statusOf(id) === value) delete JOB_STATE[id];
+  else JOB_STATE[id] = { status: value, at: JOB_STATE[id]?.at || today() };
   store.set(LS.state, JOB_STATE);
+  renderCounts();
   render();
+}
+
+function renderCounts() {
+  const n = (s) => Object.values(JOB_STATE).filter((v) => v.status === s).length;
+  el('nSaved').textContent = n('saved');
+  el('nApplied').textContent = n('applied');
 }
 
 /* -------------------------------------------------------------- helpers --- */
@@ -406,6 +470,15 @@ el('settingsBtn').onclick = () => {
 };
 
 el('refreshBtn').onclick = () => load({ silent: true });
+
+for (const tab of document.querySelectorAll('.view-tab')) {
+  tab.onclick = () => {
+    VIEW = tab.dataset.view;
+    document.querySelectorAll('.view-tab').forEach((t) => t.classList.toggle('on', t === tab));
+    el('controls').hidden = VIEW !== 'all';   // filters only mean anything in All
+    render();
+  };
+}
 
 for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'sortBy', 'hideAgency', 'declaredOnly', 'newOnly', 'showHidden']) {
   el(id).addEventListener('input', render);

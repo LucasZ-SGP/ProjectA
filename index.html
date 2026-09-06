@@ -72,6 +72,13 @@
 <!-- ------------------------------------------------------------- stats --- -->
 <section id="stats" class="stats" hidden></section>
 
+<!-- -------------------------------------------------------------- views --- -->
+<nav id="views" class="views" hidden>
+  <button class="view-tab on" data-view="all">All</button>
+  <button class="view-tab" data-view="saved">Saved <span class="view-n" id="nSaved">0</span></button>
+  <button class="view-tab" data-view="applied">Applied <span class="view-n" id="nApplied">0</span></button>
+</nav>
+
 <!-- ----------------------------------------------------------- filters --- -->
 <section id="controls" class="controls" hidden>
   <input id="q" type="search" placeholder="Search title, company, skill, description…" autocomplete="off">
@@ -145,6 +152,8 @@
       <div class="job-actions">
         <a class="btn small primary apply" target="_blank" rel="noopener noreferrer">Open posting</a>
         <button class="btn small ghost save">Save</button>
+        <button class="btn small ghost mark-applied">Applied</button>
+        <label class="applied-on" hidden>申请于 <input type="date" class="applied-date"></label>
         <button class="btn small ghost dismiss">Dismiss</button>
         <button class="btn small ghost expand">Description</button>
       </div>
