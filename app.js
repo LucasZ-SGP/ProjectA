@@ -143,17 +143,27 @@ function renderStats() {
   const p = DATA.profileSnapshot || {};
   const above = DATA.jobs.filter((j) => j.salaryEstimate?.totalMax >= (p.targetTotalAnnualMin || 0)).length;
 
+  const total = c.total ?? 0;
+  const read = c.assessed ?? 0;
+  const worth = (c.strongFit ?? 0) + (c.goodFit ?? 0);
+
   el('stats').innerHTML = [
-    stat(c.total ?? 0, 'postings tracked'),
-    stat(c.strongFit ?? 0, 'strong fits'),
-    stat((c.strongFit ?? 0) + (c.goodFit ?? 0), 'worth applying to'),
-    stat(c.awaitingAssessment ?? 0, 'still unread'),
-    stat(c.directFromEmployer ?? 0, 'direct from employer'),
-    stat(above, `could beat ${money(p.targetTotalAnnualMin)}`),
+    stat(total, 'postings tracked', `${c.new ?? 0} new since the last run`),
+    stat(read, 'read and assessed', `${total - read} never opened`),
+    stat(worth, 'worth applying to', `out of the ${read} read, not the ${total}`),
+    stat(c.strongFit ?? 0, 'strong fits', `out of the ${read} read`),
+    stat(c.awaitingAssessment ?? 0, 'queued to read next', 'ranked by keyword score'),
+    stat(c.directFromEmployer ?? 0, 'direct from employer', 'not via a job board'),
+    stat(above, `could beat ${money(p.targetTotalAnnualMin)}`, 'declared or modelled'),
   ].join('');
 }
 
-const stat = (v, k) => `<div class="stat"><span class="v">${v}</span><span class="k">${k}</span></div>`;
+// `note` states the denominator. Without it a tile like "17 worth applying to"
+// reads as 17 out of everything tracked, when it is 17 out of the 100 read.
+const stat = (v, k, note) =>
+  `<div class="stat"><span class="v">${v}</span><span class="k">${k}</span>` +
+  (note ? `<span class="n">${note}</span>` : '') +
+  `</div>`;
 
 function currentFilters() {
   return {
