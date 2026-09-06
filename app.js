@@ -201,7 +201,10 @@ function render() {
   }
 
   let jobs = DATA.jobs.filter((j) => {
-    if (statusOf(j.id) === 'dismissed' && !f.showHidden) return false;
+    // Saving is a decision, the same as dismissing: once made, the job leaves
+    // this list and lives in its own tab. All is the untriaged pile.
+    const st = statusOf(j.id);
+    if ((st === 'saved' || st === 'dismissed') && !f.showHidden) return false;
     if (!passesGrade(j, f.minGrade)) return false;
     if ((j.credibility?.score ?? 50) < f.minCred) return false;
     if (f.hideAgency && j.isAgency) return false;
@@ -224,9 +227,9 @@ function render() {
   }[f.sortBy] || ((a, b) => gradeRank(b) - gradeRank(a));
   jobs = jobs.slice().sort(cmp);
 
-  // Saved and applied jobs float to the top regardless of sort.
-  const pinned = (id) => (statusOf(id) === 'saved' ? 2 : statusOf(id) === 'applied' ? 1 : 0);
-  jobs.sort((a, b) => pinned(b.id) - pinned(a.id));
+  // Applied jobs still float to the top: they stay in this list, and seeing
+  // them here is the reminder of what is already out the door.
+  jobs.sort((a, b) => (statusOf(b.id) === 'applied') - (statusOf(a.id) === 'applied'));
 
   el('resultCount').textContent = `${jobs.length} shown`;
 
