@@ -1,0 +1,238 @@
+/* --------------------------------------------------------------- tokens --- */
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #f0efec;
+  --border: #e0dedb;
+  --text: #1c1b19;
+  --muted: #6f6b66;
+  --accent: #2b6cb0;
+  --good: #1a7f52;
+  --warn: #a8620a;
+  --bad: #b3261e;
+  --ring: #d8d5d0;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 4px 12px rgba(0, 0, 0, .04);
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17171a;
+    --surface: #1f1f23;
+    --surface-2: #27272c;
+    --border: #33333a;
+    --text: #eceaea;
+    --muted: #9c9791;
+    --accent: #7aa9dd;
+    --good: #5bbd8c;
+    --warn: #e0a458;
+    --bad: #e0776e;
+    --ring: #3a3a42;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* An author `display` declaration beats the UA stylesheet's [hidden] rule, so
+   .setup { display: grid } kept the panel on screen after it was hidden. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* -------------------------------------------------------------- topbar --- */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 20px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { font-size: 16px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.stamp { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.topbar-actions { display: flex; gap: 8px; }
+
+.dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted); align-self: center; flex: none;
+  transition: background .2s;
+}
+.dot.ok { background: var(--good); }
+.dot.err { background: var(--bad); }
+.dot.loading { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+
+/* -------------------------------------------------------------- button --- */
+.btn {
+  font: inherit; font-size: 13px; font-weight: 500;
+  padding: 6px 12px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  cursor: pointer; transition: background .12s, border-color .12s;
+  text-decoration: none; display: inline-block;
+}
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { background: transparent; }
+.btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, var(--border)); }
+.btn.small { font-size: 12px; padding: 4px 10px; }
+.btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* --------------------------------------------------------------- setup --- */
+.setup { display: grid; place-items: center; padding: 40px 20px; }
+.setup-card {
+  width: min(560px, 100%); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow);
+}
+.setup-card h2 { margin: 0 0 8px; font-size: 17px; }
+.setup-card label { display: block; margin: 14px 0 0; font-size: 13px; font-weight: 550; }
+.setup-card label .muted { font-weight: 400; }
+.setup-card input[type=text], .setup-card input[type=password] {
+  width: 100%; margin-top: 5px; padding: 8px 10px; font: inherit; font-size: 14px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px;
+}
+.setup-card input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; }
+.setup-actions { display: flex; gap: 8px; margin-top: 20px; }
+.setup-msg { margin: 12px 0 0; font-size: 13px; min-height: 1.2em; }
+.setup-msg.err { color: var(--bad); }
+.setup-msg.ok { color: var(--good); }
+.token-help { margin-top: 16px; font-size: 13px; }
+.token-help summary { cursor: pointer; color: var(--accent); }
+.token-help ol { padding-left: 20px; color: var(--muted); }
+.token-help .warn {
+  border-left: 3px solid var(--warn); padding: 8px 12px; margin: 10px 0 0;
+  background: color-mix(in srgb, var(--warn) 8%, transparent); color: var(--text);
+  border-radius: 0 6px 6px 0;
+}
+
+/* --------------------------------------------------------------- stats --- */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px; padding: 18px 20px 4px; max-width: 1180px; margin: 0 auto; width: 100%;
+}
+.stat {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px;
+}
+.stat .v { font-size: 22px; font-weight: 620; letter-spacing: -.02em; display: block; }
+.stat .k { font-size: 12px; color: var(--muted); }
+
+/* ------------------------------------------------------------ controls --- */
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 16px 20px; max-width: 1180px; margin: 0 auto; width: 100%;
+}
+#q {
+  flex: 1 1 260px; min-width: 200px; padding: 8px 12px; font: inherit; font-size: 14px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.ctl { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.ctl select, .ctl input[type=range] { font: inherit; font-size: 13px; accent-color: var(--accent); }
+.ctl select {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+}
+.ctl output { color: var(--text); font-variant-numeric: tabular-nums; min-width: 2ch; }
+.chk { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.chk input { accent-color: var(--accent); }
+.spacer { flex: 1; }
+
+/* ---------------------------------------------------------------- list --- */
+.list { max-width: 1180px; margin: 0 auto; padding: 4px 20px 60px; display: grid; gap: 10px; }
+
+.job {
+  display: grid; grid-template-columns: 62px 1fr; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow);
+}
+.job.dismissed { opacity: .45; }
+.job.saved { border-color: color-mix(in srgb, var(--good) 50%, var(--border)); }
+
+.job-score {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-right: 1px solid var(--border); padding-right: 12px;
+}
+.score-num { font-size: 24px; font-weight: 640; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.score-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.job-score.s-hi .score-num { color: var(--good); }
+.job-score.s-mid .score-num { color: var(--warn); }
+.job-score.s-lo .score-num { color: var(--muted); }
+
+.job-body { min-width: 0; }
+.job-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.job-head h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; }
+.job-title { color: var(--text); text-decoration: none; }
+.job-title:hover { color: var(--accent); text-decoration: underline; }
+
+.badges { display: flex; gap: 5px; flex-wrap: wrap; }
+.badge {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  padding: 2px 7px; border-radius: 20px; border: 1px solid var(--border); color: var(--muted);
+  white-space: nowrap;
+}
+.badge.new { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.badge.agency { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.badge.tier1 { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+.job-meta { font-size: 13px; color: var(--muted); margin-top: 3px; }
+.job-meta span + span::before { content: "·"; margin: 0 7px; }
+
+.company-brief {
+  font-size: 13px; color: var(--muted); margin-top: 8px;
+  border-left: 2px solid var(--border); padding-left: 10px;
+}
+.company-brief b { color: var(--text); font-weight: 550; }
+.company-brief .watch { color: var(--warn); }
+
+.salary { margin-top: 9px; font-size: 14px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.salary .amount { font-weight: 620; font-variant-numeric: tabular-nums; }
+.salary .amount.up { color: var(--good); }
+.salary .amount.down { color: var(--bad); }
+.salary .tag {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  padding: 2px 7px; border-radius: 4px;
+}
+.salary .tag.declared { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+.salary .tag.modelled { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+.salary .note { font-size: 12px; color: var(--muted); flex-basis: 100%; }
+
+.reasons { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; }
+.reasons li {
+  font-size: 12px; padding: 2px 8px; border-radius: 5px;
+  background: var(--surface-2); color: var(--muted);
+}
+.reasons li.good { color: var(--good); background: color-mix(in srgb, var(--good) 11%, transparent); }
+.reasons li.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+
+.job-actions { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.jd {
+  margin: 12px 0 0; padding: 12px; max-height: 380px; overflow: auto;
+  background: var(--surface-2); border-radius: 8px;
+  font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap; word-break: break-word; color: var(--muted);
+}
+
+.empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+.muted { color: var(--muted); }
+
+@media (max-width: 640px) {
+  /* The title wrapped to two lines and slid under the buttons; keep it on one
+     line and drop the timestamp, which is the least load-bearing thing here. */
+  .topbar { padding: 10px 14px; }
+  .brand h1 { white-space: nowrap; }
+  .stamp { display: none; }
+  .job { grid-template-columns: 48px 1fr; gap: 10px; padding: 12px; }
+  .job-score { padding-right: 8px; }
+  .score-num { font-size: 20px; }
+  .controls { gap: 8px; }
+}

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>SG Job Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="dot" id="statusDot"></span>
+    <h1>SG Job Dashboard</h1>
+    <span class="stamp" id="generatedAt"></span>
+  </div>
+  <div class="topbar-actions">
+    <button id="refreshBtn" class="btn ghost" title="Re-fetch from the private repo">Refresh</button>
+    <button id="settingsBtn" class="btn">Settings</button>
+  </div>
+</header>
+
+<!-- ------------------------------------------------------------- setup --- -->
+<section id="setup" class="setup" hidden>
+  <div class="setup-card">
+    <h2>Connect to your data</h2>
+    <p class="muted">
+      Job data lives in a <strong>private</strong> repo. This page reads it directly
+      from the GitHub API using a token you provide. Nothing is sent anywhere else —
+      the token stays in this browser's local storage and every request goes straight
+      to <code>api.github.com</code>.
+    </p>
+
+    <label>Repository <span class="muted">owner/name of the private data repo</span>
+      <input id="cfgRepo" type="text" placeholder="owner/repository" autocomplete="off" spellcheck="false">
+    </label>
+
+    <label>Branch
+      <input id="cfgBranch" type="text" placeholder="main" autocomplete="off" spellcheck="false">
+    </label>
+
+    <label>Fine-grained personal access token
+      <input id="cfgToken" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
+    </label>
+
+    <details class="token-help">
+      <summary>How to make a token with the least possible power</summary>
+      <ol>
+        <li>GitHub → Settings → Developer settings → <strong>Fine-grained tokens</strong> → Generate new token.</li>
+        <li>Repository access: <strong>Only select repositories</strong> → your data repo alone.</li>
+        <li>Permissions: <strong>Contents → Read-only</strong>. Nothing else. Not metadata-write, not actions, not issues.</li>
+        <li>Expiry: 90 days. Put a calendar reminder to rotate it.</li>
+      </ol>
+      <p class="warn">
+        A token in browser storage is readable by anything that can run script on this
+        origin. That is an acceptable trade only because this one is read-only and
+        scoped to a single private repo. Never paste a classic token here, and never
+        paste one with write access.
+      </p>
+    </details>
+
+    <div class="setup-actions">
+      <button id="saveCfg" class="btn primary">Connect</button>
+      <button id="clearCfg" class="btn ghost danger">Forget token</button>
+    </div>
+    <p id="setupMsg" class="setup-msg"></p>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------- stats --- -->
+<section id="stats" class="stats" hidden></section>
+
+<!-- ----------------------------------------------------------- filters --- -->
+<section id="controls" class="controls" hidden>
+  <input id="q" type="search" placeholder="Search title, company, skill, description…" autocomplete="off">
+
+  <label class="ctl">Min score
+    <input id="minScore" type="range" min="0" max="100" step="5" value="55">
+    <output id="minScoreOut">55</output>
+  </label>
+
+  <label class="ctl">Min total comp
+    <select id="minComp">
+      <option value="0">any</option>
+      <option value="140000">S$140k</option>
+      <option value="160000" selected>S$160k (your current)</option>
+      <option value="175000">S$175k (your target)</option>
+      <option value="200000">S$200k</option>
+    </select>
+  </label>
+
+  <label class="ctl">Sort
+    <select id="sortBy">
+      <option value="score">Match score</option>
+      <option value="comp">Estimated comp</option>
+      <option value="date">Newest</option>
+    </select>
+  </label>
+
+  <label class="chk"><input id="hideAgency" type="checkbox" checked> Hide agencies</label>
+  <label class="chk"><input id="declaredOnly" type="checkbox"> Declared salary only</label>
+  <label class="chk"><input id="newOnly" type="checkbox"> New today</label>
+  <label class="chk"><input id="showHidden" type="checkbox"> Show dismissed</label>
+
+  <span class="spacer"></span>
+  <span id="resultCount" class="muted"></span>
+</section>
+
+<main id="list" class="list"></main>
+<div id="empty" class="empty" hidden></div>
+
+<template id="jobTpl">
+  <article class="job">
+    <div class="job-score"><span class="score-num"></span><span class="score-lbl">match</span></div>
+    <div class="job-body">
+      <div class="job-head">
+        <h3><a class="job-title" target="_blank" rel="noopener noreferrer"></a></h3>
+        <div class="badges"></div>
+      </div>
+      <div class="job-meta"></div>
+      <div class="company-brief"></div>
+      <div class="salary"></div>
+      <ul class="reasons"></ul>
+      <div class="job-actions">
+        <a class="btn small primary apply" target="_blank" rel="noopener noreferrer">Open posting</a>
+        <button class="btn small ghost save">Save</button>
+        <button class="btn small ghost dismiss">Dismiss</button>
+        <button class="btn small ghost expand">Description</button>
+      </div>
+      <pre class="jd" hidden></pre>
+    </div>
+  </article>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

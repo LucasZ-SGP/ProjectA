@@ -1,0 +1,5 @@
+# NEVER commit the feed to this repo - it is public. The local preview copies
+# data/ here on purpose; this line is what stops it reaching GitHub.
+data/
+.DS_Store
+node_modules/
