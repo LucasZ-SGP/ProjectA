@@ -340,6 +340,25 @@ function card(job) {
     briefBox.remove();
   }
 
+  // Reported compensation from Levels.fyi. Shown above the modelled estimate
+  // because a real number, however thin the sample, beats a tier multiplier.
+  // Their terms ask for attribution and a link back, hence the cited link.
+  const compBox = node.querySelector('.reported-comp');
+  const rc = job.reportedComp;
+  if (rc?.medianTotal) {
+    const ladder = (rc.levels || [])
+      .filter((l) => l.total)
+      .map((l) => `<span class="rung"><b>${escapeHTML(l.level)}</b> ${money(l.total)}</span>`)
+      .join('');
+    compBox.innerHTML =
+      `<div class="rc-head">Reported median <b>${money(rc.medianTotal)}</b> ` +
+      `<span class="rc-note">software engineer, Singapore</span>` +
+      `<a href="${escapeHTML(rc.url)}" target="_blank" rel="noopener noreferrer" class="rc-src">Levels.fyi</a></div>` +
+      (ladder ? `<div class="rc-ladder">${ladder}</div>` : '');
+  } else {
+    compBox.remove();
+  }
+
   // Salary
   const s = job.salaryEstimate;
   const current = DATA.profileSnapshot?.currentTotalAnnual ?? 0;
@@ -374,6 +393,11 @@ function card(job) {
   saveBtn.onclick = () => setState(job.id, 'saved');
   appliedBtn.onclick = () => setState(job.id, 'applied');
   dismissBtn.onclick = () => setState(job.id, 'dismissed');
+
+  // Glassdoor holds employer ratings but forbids automated access in its
+  // robots.txt, so this is a deep link rather than a scraped number.
+  node.querySelector('.glassdoor').href =
+    `https://www.glassdoor.sg/Search/results.htm?keyword=${encodeURIComponent(company?.name || job.company)}`;
 
   // The date is editable because you often mark a job applied days later.
   const dateWrap = node.querySelector('.applied-on');
