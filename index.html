@@ -76,9 +76,23 @@
 <section id="controls" class="controls" hidden>
   <input id="q" type="search" placeholder="Search title, company, skill, description…" autocomplete="off">
 
-  <label class="ctl">Min score
-    <input id="minScore" type="range" min="0" max="100" step="5" value="55">
-    <output id="minScoreOut">55</output>
+  <label class="ctl">Fit
+    <select id="minGrade">
+      <option value="any">any, including unassessed</option>
+      <option value="assessed">assessed only</option>
+      <option value="stretch">stretch or better</option>
+      <option value="good-fit" selected>good fit or better</option>
+      <option value="strong-fit">strong fit only</option>
+    </select>
+  </label>
+
+  <label class="ctl">Source
+    <select id="minCred">
+      <option value="0">any provenance</option>
+      <option value="40" selected>exclude compliance risk</option>
+      <option value="60">likely genuine or better</option>
+      <option value="80">direct from employer only</option>
+    </select>
   </label>
 
   <label class="ctl">Min total comp
@@ -93,7 +107,8 @@
 
   <label class="ctl">Sort
     <select id="sortBy">
-      <option value="score">Match score</option>
+      <option value="fit">Fit, then score</option>
+      <option value="credibility">Source credibility</option>
       <option value="comp">Estimated comp</option>
       <option value="date">Newest</option>
     </select>
@@ -113,13 +128,17 @@
 
 <template id="jobTpl">
   <article class="job">
-    <div class="job-score"><span class="score-num"></span><span class="score-lbl">match</span></div>
+    <div class="job-rail">
+      <div class="grade-chip"></div>
+      <div class="cred-chip"></div>
+    </div>
     <div class="job-body">
       <div class="job-head">
         <h3><a class="job-title" target="_blank" rel="noopener noreferrer"></a></h3>
         <div class="badges"></div>
       </div>
       <div class="job-meta"></div>
+      <div class="assessment"></div>
       <div class="company-brief"></div>
       <div class="salary"></div>
       <ul class="reasons"></ul>

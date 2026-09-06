@@ -128,10 +128,11 @@ function renderStats() {
 
   el('stats').innerHTML = [
     stat(c.total ?? 0, 'postings tracked'),
-    stat(c.new ?? 0, 'new since last run'),
-    stat(c.strongMatches ?? 0, 'scoring 70 or above'),
+    stat(c.strongFit ?? 0, 'strong fits'),
+    stat((c.strongFit ?? 0) + (c.goodFit ?? 0), 'worth applying to'),
+    stat(c.awaitingAssessment ?? 0, 'still unread'),
+    stat(c.directFromEmployer ?? 0, 'direct from employer'),
     stat(above, `could beat ${money(p.targetTotalAnnualMin)}`),
-    stat(Object.keys(COMPANIES).length, 'companies researched'),
   ].join('');
 }
 
@@ -140,7 +141,8 @@ const stat = (v, k) => `<div class="stat"><span class="v">${v}</span><span class
 function currentFilters() {
   return {
     q: el('q').value.trim().toLowerCase(),
-    minScore: +el('minScore').value,
+    minGrade: el('minGrade').value,
+    minCred: +el('minCred').value,
     minComp: +el('minComp').value,
     sortBy: el('sortBy').value,
     hideAgency: el('hideAgency').checked,
@@ -153,28 +155,29 @@ function currentFilters() {
 function render() {
   const f = currentFilters();
   store.set(LS.filters, f);
-  el('minScoreOut').value = f.minScore;
 
   let jobs = DATA.jobs.filter((j) => {
     if (JOB_STATE[j.id] === 'dismissed' && !f.showHidden) return false;
-    if (j.score < f.minScore) return false;
+    if (!passesGrade(j, f.minGrade)) return false;
+    if ((j.credibility?.score ?? 50) < f.minCred) return false;
     if (f.hideAgency && j.isAgency) return false;
     if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
     if (f.newOnly && !j.isNew) return false;
     if (f.minComp && (j.salaryEstimate?.totalMax ?? 0) < f.minComp) return false;
     if (f.q) {
-      const hay = [j.title, j.company, j.location, (j.skills || []).join(' '), j.description]
-        .join(' ').toLowerCase();
+      const hay = [j.title, j.company, j.location, (j.skills || []).join(' '), j.description,
+        j.verdict?.headline, j.verdict?.why].join(' ').toLowerCase();
       if (!hay.includes(f.q)) return false;
     }
     return true;
   });
 
   const cmp = {
-    score: (a, b) => b.score - a.score,
+    fit: (a, b) => gradeRank(b) - gradeRank(a) || b.keywordScore - a.keywordScore,
+    credibility: (a, b) => (b.credibility?.score ?? 0) - (a.credibility?.score ?? 0) || gradeRank(b) - gradeRank(a),
     comp: (a, b) => (b.salaryEstimate?.totalMax ?? 0) - (a.salaryEstimate?.totalMax ?? 0),
     date: (a, b) => String(b.postedAt || '').localeCompare(String(a.postedAt || '')),
-  }[f.sortBy];
+  }[f.sortBy] || ((a, b) => gradeRank(b) - gradeRank(a));
   jobs = jobs.slice().sort(cmp);
 
   // Saved jobs float to the top regardless of sort.
@@ -189,10 +192,29 @@ function render() {
   empty.hidden = jobs.length > 0;
   if (!jobs.length) {
     empty.textContent = DATA.jobs.length
-      ? 'Nothing matches these filters. Try lowering the minimum score.'
+      ? 'Nothing matches these filters. Most postings have not been read yet — set Fit to "any" to see them, or run the assessment pass.'
       : 'No jobs in the feed yet. Has the pipeline run?';
   }
 }
+
+// Assessed grades outrank the keyword score, which is triage only.
+const GRADE_ORDER = ['avoid', 'unknown', 'weak-fit', 'stretch', 'good-fit', 'strong-fit'];
+const GRADE_LABEL = {
+  'strong-fit': 'Strong fit', 'good-fit': 'Good fit', stretch: 'Stretch',
+  'weak-fit': 'Weak fit', avoid: 'Avoid', unknown: 'Unclear',
+};
+const gradeRank = (j) => (j.verdict ? GRADE_ORDER.indexOf(j.verdict.grade) + 1 : 0);
+
+function passesGrade(job, mode) {
+  if (mode === 'any') return true;
+  if (!job.verdict) return false;              // every other mode wants an assessment
+  if (mode === 'assessed') return true;
+  return GRADE_ORDER.indexOf(job.verdict.grade) >= GRADE_ORDER.indexOf(mode);
+}
+
+const CRED_LABEL = {
+  direct: 'Direct', likely: 'Likely real', unclear: 'Unclear', suspect: 'Compliance risk',
+};
 
 function card(job) {
   const node = el('jobTpl').content.cloneNode(true);
@@ -200,10 +222,21 @@ function card(job) {
   const state = JOB_STATE[job.id];
   if (state) root.classList.add(state);
 
-  // Score
-  const sc = node.querySelector('.job-score');
-  sc.classList.add(job.score >= 70 ? 's-hi' : job.score >= 50 ? 's-mid' : 's-lo');
-  node.querySelector('.score-num').textContent = job.score;
+  // Fit grade (from the reading pass) and provenance (from the rules).
+  const gradeChip = node.querySelector('.grade-chip');
+  if (job.verdict) {
+    gradeChip.className = `grade-chip g-${job.verdict.grade}`;
+    gradeChip.innerHTML = `<span class="g-main">${GRADE_LABEL[job.verdict.grade] || job.verdict.grade}</span>`;
+  } else {
+    gradeChip.className = 'grade-chip g-pending';
+    gradeChip.innerHTML = `<span class="g-main">Not read yet</span><span class="g-sub">kw ${job.keywordScore}</span>`;
+  }
+
+  const cred = job.credibility || { grade: 'unclear', score: 50 };
+  const credChip = node.querySelector('.cred-chip');
+  credChip.className = `cred-chip c-${cred.grade}`;
+  credChip.textContent = CRED_LABEL[cred.grade] || cred.grade;
+  credChip.title = (cred.reasons || []).map((r) => r.text).join('\n');
 
   // Title + badges
   const title = node.querySelector('.job-title');
@@ -226,6 +259,26 @@ function card(job) {
     job.minYearsExperience != null ? `<span>${job.minYearsExperience}y+ required</span>` : '',
     job.applicants ? `<span>${job.applicants} applicants</span>` : '',
   ].filter(Boolean).join('');
+
+  // The actual assessment: what was read, matched and missing.
+  const box = node.querySelector('.assessment');
+  if (job.verdict) {
+    const v = job.verdict;
+    box.innerHTML = [
+      v.headline ? `<p class="a-headline">${escapeHTML(v.headline)}</p>` : '',
+      v.why ? `<p class="a-why">${escapeHTML(v.why)}</p>` : '',
+      v.matches?.length
+        ? `<div class="a-list a-match"><b>Matches</b><ul>${v.matches.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
+        : '',
+      v.gaps?.length
+        ? `<div class="a-list a-gap"><b>Gaps</b><ul>${v.gaps.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
+        : '',
+      v.compRead ? `<p class="a-comp">${escapeHTML(v.compRead)}</p>` : '',
+      v.verdict ? `<p class="a-verdict">${escapeHTML(v.verdict)}</p>` : '',
+    ].join('');
+  } else {
+    box.remove();
+  }
 
   // Company brief from the enrichment pass
   const briefBox = node.querySelector('.company-brief');
@@ -251,7 +304,7 @@ function card(job) {
 
   // Why this score
   const reasons = node.querySelector('.reasons');
-  for (const r of (job.reasons || []).slice(0, 6)) {
+  for (const r of (job.reasons || []).slice(0, job.verdict ? 3 : 6)) {
     const li = document.createElement('li');
     li.className = r.kind;
     li.textContent = r.text;
@@ -354,7 +407,7 @@ el('settingsBtn').onclick = () => {
 
 el('refreshBtn').onclick = () => load({ silent: true });
 
-for (const id of ['q', 'minScore', 'minComp', 'sortBy', 'hideAgency', 'declaredOnly', 'newOnly', 'showHidden']) {
+for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'sortBy', 'hideAgency', 'declaredOnly', 'newOnly', 'showHidden']) {
   el(id).addEventListener('input', render);
 }
 
@@ -363,9 +416,10 @@ for (const id of ['q', 'minScore', 'minComp', 'sortBy', 'hideAgency', 'declaredO
   const f = store.get(LS.filters, null);
   if (!f) return;
   el('q').value = f.q || '';
-  el('minScore').value = f.minScore ?? 55;
+  el('minGrade').value = f.minGrade ?? 'good-fit';
+  el('minCred').value = f.minCred ?? 40;
   el('minComp').value = f.minComp ?? 160000;
-  el('sortBy').value = f.sortBy || 'score';
+  el('sortBy').value = f.sortBy || 'fit';
   el('hideAgency').checked = f.hideAgency ?? true;
   el('declaredOnly').checked = f.declaredOnly ?? false;
   el('newOnly').checked = f.newOnly ?? false;
