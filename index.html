@@ -47,21 +47,17 @@
 
     <hr class="cfg-rule">
 
+    <label class="chk cfg-chk">
+      <input id="cfgSync" type="checkbox" checked>
+      Sync saved, applied and dismissed across devices
+    </label>
     <p class="cfg-note">
-      <strong>Cross-device sync (optional).</strong> Saved, applied and dismissed
-      live in this browser unless you point them at a repo. Use a
-      <strong>separate</strong> private repo for this — the token below needs
-      <strong>write</strong> access, and you do not want a write token in a browser
-      that can also reach your ledger and investment data.
+      Writes <code>jobs/dashboard-state.json</code> to the same repo, so the token
+      above needs <strong>Contents: Read and write</strong> rather than read-only.
+      That token can then change anything in that repo, this dashboard's data
+      included. Untick to keep the three lists in this browser only, which needs
+      no write access at all.
     </p>
-
-    <label>State repository <span class="muted">a private repo of its own, e.g. owner/dashboard-state</span>
-      <input id="cfgStateRepo" type="text" placeholder="owner/dashboard-state" autocomplete="off" spellcheck="false">
-    </label>
-
-    <label>State token <span class="muted">fine-grained, Contents: Read and write, that repo only</span>
-      <input id="cfgStateToken" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
-    </label>
 
     <p class="sync-status" id="syncStatus"></p>
 
@@ -70,14 +66,14 @@
       <ol>
         <li>GitHub → Settings → Developer settings → <strong>Fine-grained tokens</strong> → Generate new token.</li>
         <li>Repository access: <strong>Only select repositories</strong> → your data repo alone.</li>
-        <li>Permissions: <strong>Contents → Read-only</strong>. Nothing else. Not metadata-write, not actions, not issues.</li>
+        <li>Permissions: <strong>Contents → Read and write</strong> if sync is on, otherwise <strong>Read-only</strong>. Nothing else — not actions, not issues.</li>
         <li>Expiry: 90 days. Put a calendar reminder to rotate it.</li>
       </ol>
       <p class="warn">
         A token in browser storage is readable by anything that can run script on this
-        origin. That is an acceptable trade only because this one is read-only and
-        scoped to a single private repo. Never paste a classic token here, and never
-        paste one with write access.
+        origin. With sync on, this one can write to the whole repo, so treat it as a
+        credential worth rotating on schedule. Never paste a classic token here — a
+        fine-grained token scoped to one repository is the whole safety margin.
       </p>
     </details>
 

@@ -19,10 +19,11 @@ const LS = {
   filters: 'jobdash.filters',
 };
 
-// Where saved / applied / dismissed lives when sync is configured. One small
-// JSON file in a repo of its own, so the token that can write it cannot touch
-// anything else.
-const SYNC_PATH = 'dashboard-state.json';
+// Where saved / applied / dismissed lives. Same private repo and same token as
+// the feed, which means that token needs Contents:write — it can therefore
+// reach everything else in that repo. Deliberate choice, not an oversight.
+// Kept outside jobs/data/ so a pipeline run can never overwrite it.
+const SYNC_PATH = 'jobs/dashboard-state.json';
 let SYNC_SHA = null;      // blob sha of the copy we last saw, for safe updates
 let SYNC_TIMER = null;
 
@@ -166,8 +167,7 @@ function showSetup() {
   el('cfgRepo').value = cfg.repo || '';
   el('cfgBranch').value = cfg.branch || 'main';
   el('cfgToken').value = cfg.token || '';
-  el('cfgStateRepo').value = cfg.stateRepo || '';
-  el('cfgStateToken').value = cfg.stateToken || '';
+  el('cfgSync').checked = cfg.sync !== false;
   el('setup').hidden = false;
 }
 
@@ -500,9 +500,8 @@ function persistState() {
 
 const syncCfg = () => {
   const c = store.get(LS.cfg, {}) || {};
-  return c.stateRepo && c.stateToken
-    ? { repo: c.stateRepo, token: c.stateToken, branch: c.stateBranch || 'main' }
-    : null;
+  if (!c.repo || !c.token || c.sync === false) return null;
+  return { repo: c.repo, token: c.token, branch: c.branch || 'main' };
 };
 
 function syncStatus(text, kind = '') {
@@ -538,7 +537,7 @@ async function pullState() {
   }
 }
 
-function schedulePush(delay = 1500) {
+function schedulePush(delay = 4000) {
   if (!syncCfg()) return;
   clearTimeout(SYNC_TIMER);
   SYNC_TIMER = setTimeout(pushState, delay);
@@ -623,8 +622,7 @@ el('saveCfg').onclick = async () => {
 
   store.set(LS.cfg, {
     repo, branch: el('cfgBranch').value.trim() || 'main', token,
-    stateRepo: el('cfgStateRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, ''),
-    stateToken: el('cfgStateToken').value.trim(),
+    sync: el('cfgSync').checked,
   });
   setMsg('Connecting…', '');
   await load();
@@ -633,7 +631,6 @@ el('saveCfg').onclick = async () => {
 el('clearCfg').onclick = () => {
   store.del(LS.cfg);
   el('cfgToken').value = '';
-  el('cfgStateToken').value = '';
   setMsg('Token removed from this browser.', 'ok');
   setStatus('');
 };
