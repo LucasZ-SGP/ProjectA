@@ -152,7 +152,29 @@ body {
 }
 .co.saved     { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .co.dismissed { opacity: .5; }
-.co-name { margin: 0; font-size: 17px; font-weight: 640; letter-spacing: -.01em; }
+.co-name { margin: 0; font-size: 17px; font-weight: 640; letter-spacing: -.01em; cursor: pointer; }
+.co-name:hover { color: var(--accent); }
+
+.co-toggle {
+  flex: none; width: 20px; height: 20px; padding: 0; margin-right: 2px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--surface-2); color: var(--muted);
+  cursor: pointer; font: inherit; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.co-toggle:hover { color: var(--text); border-color: var(--muted); }
+.co-toggle::before { content: '−'; font-size: 14px; }
+.co.collapsed .co-toggle::before { content: '+'; }
+
+/* Folded shut: the header, the meta line and the company buttons stay, so a
+   card can still be saved or dismissed without opening it. */
+.co.collapsed .assessment,
+.co.collapsed .company-brief,
+.co.collapsed .reported-comp,
+.co.collapsed .postings { display: none; }
+.co.collapsed { padding-bottom: 12px; }
+.co.collapsed .co-meta { margin-bottom: 8px; }
+.co.collapsed .co-actions { margin: 0; }
 .co-meta {
   display: flex; flex-wrap: wrap; gap: 12px;
   font-size: 12px; color: var(--muted); margin: 3px 0 10px;
@@ -339,6 +361,7 @@ body {
 .job-score.s-lo .score-num { color: var(--muted); }
 
 .job-body { min-width: 0; }
+.co .job-head { align-items: center; }
 .job-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .job-head h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; }
 .job-title { color: var(--text); text-decoration: none; }

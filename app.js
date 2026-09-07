@@ -45,6 +45,9 @@ let COMPANIES = {};
 let JOB_STATE = migrateState(store.get(LS.state, {}));
 let VIEW = 'all';
 let PAGE = 1;
+// Which company cards are folded shut. Persisted so the shape of the page
+// survives a reload, and keyed by company so it survives re-sorting too.
+let COLLAPSED = store.get('jobdash.collapsed', {});
 const PER_PAGE = 10;      // companies per page
 
 function migrateState(raw) {
@@ -342,7 +345,9 @@ function render() {
   el('resultCount').textContent =
     `${groups.length} ${groups.length === 1 ? 'company' : 'companies'} · ` +
     `${jobs.length} ${jobs.length === 1 ? 'role' : 'roles'}`;
-  list.replaceChildren(...paginate(groups).map((g) => companyCard(g, { view: 'all' })));
+  const page = paginate(groups);
+  list.replaceChildren(...page.map((g) => companyCard(g, { view: 'all' })));
+  el('collapseAll').textContent = page.every((g) => COLLAPSED[g.key]) ? 'Expand all' : 'Collapse all';
 
   empty.hidden = groups.length > 0;
   if (!groups.length) {
@@ -377,6 +382,7 @@ function paginate(groups) {
 function companyCard(group, { view }) {
   const node = el('coTpl').content.cloneNode(true);
   const root = node.querySelector('.co');
+  root.dataset.key = group.key;
   const lead = group.best;
   const coState = coStatusOf(group.key);
   if (coState) root.classList.add(coState);
@@ -402,6 +408,25 @@ function companyCard(group, { view }) {
 
   const company = COMPANIES[group.key];
   node.querySelector('.co-name').textContent = company?.name || group.name;
+
+  // Collapsing hides the analysis and the roles but keeps the header and the
+  // company-level buttons, so a card can be judged and dismissed folded shut.
+  const toggle = node.querySelector('.co-toggle');
+  const applyCollapse = () => {
+    const shut = !!COLLAPSED[group.key];
+    root.classList.toggle('collapsed', shut);
+    toggle.setAttribute('aria-expanded', String(!shut));
+    toggle.title = shut ? 'Expand this company' : 'Collapse this company';
+  };
+  applyCollapse();
+  const flip = () => {
+    if (COLLAPSED[group.key]) delete COLLAPSED[group.key];
+    else COLLAPSED[group.key] = true;
+    store.set('jobdash.collapsed', COLLAPSED);
+    applyCollapse();          // no re-render: keeps scroll position steady
+  };
+  toggle.onclick = flip;
+  node.querySelector('.co-name').onclick = flip;
 
   const badges = node.querySelector('.badges');
   if (coState === 'saved') badges.append(badge('saved', 'saved-badge'));
@@ -797,6 +822,18 @@ const goToPage = (n) => {
   render();
   el('list').scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
+el('collapseAll').onclick = () => {
+  const cards = [...document.querySelectorAll('.co')];
+  const keys = cards.map((c) => c.dataset.key).filter(Boolean);
+  const anyOpen = keys.some((k) => !COLLAPSED[k]);
+  for (const k of keys) {
+    if (anyOpen) COLLAPSED[k] = true;
+    else delete COLLAPSED[k];
+  }
+  store.set('jobdash.collapsed', COLLAPSED);
+  render();
+};
+
 el('syncBtn').onclick = async () => {
   const btn = el('syncBtn');
   btn.disabled = true;
