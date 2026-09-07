@@ -137,6 +137,50 @@ body {
 .sync-status.ok  { color: var(--good); }
 .sync-status.bad { color: var(--bad); }
 
+/* ------------------------------------------------------ company cards --- */
+.co {
+  display: flex; gap: 14px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 18px; margin-bottom: 14px;
+}
+.co.saved     { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.co.dismissed { opacity: .5; }
+.co-name { margin: 0; font-size: 17px; font-weight: 640; letter-spacing: -.01em; }
+.co-meta {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  font-size: 12px; color: var(--muted); margin: 3px 0 10px;
+}
+.co-actions { margin: 12px 0 4px; }
+
+.postings { margin-top: 14px; border-top: 1px solid var(--border); }
+.post {
+  padding: 13px 0 12px; border-bottom: 1px solid var(--border);
+}
+.post:last-child { border-bottom: none; padding-bottom: 2px; }
+.post.dismissed { opacity: .45; }
+.post.saved  { box-shadow: inset 3px 0 0 var(--accent); padding-left: 12px; }
+.post.applied { box-shadow: inset 3px 0 0 var(--good); padding-left: 12px; }
+
+.post-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px; }
+.post-head h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.post-grade {
+  flex: none; font-size: 10px; font-weight: 660; letter-spacing: .04em;
+  text-transform: uppercase; padding: 3px 7px; border-radius: 5px;
+  border: 1px solid currentColor;
+}
+.post-note {
+  margin: 6px 0 7px; font-size: 13px; line-height: 1.5; color: var(--text);
+}
+.post .job-meta { margin: 4px 0 0; }
+.post .salary { margin: 6px 0; }
+.post .reasons { margin: 4px 0 0; }
+.post .job-actions { margin-top: 9px; }
+.show-all { margin: 12px 0 2px; }
+
+.badge.saved-badge {
+  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
 /* --------------------------------------------------------------- views --- */
 .views {
   display: flex; gap: 4px; padding: 14px 20px 0;

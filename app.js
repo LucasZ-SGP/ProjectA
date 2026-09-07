@@ -220,71 +220,6 @@ function currentFilters() {
   };
 }
 
-function render() {
-  const f = currentFilters();
-  store.set(LS.filters, f);
-
-  // Saved and Applied are lists, not filters: they ignore the filter bar
-  // entirely, because a job you have already applied to should never vanish
-  // because today's minimum-fit setting moved.
-  if (VIEW !== 'all') {
-    const wanted = DATA.jobs.filter((j) => statusOf(j.id) === VIEW);
-    wanted.sort((a, b) => String(JOB_STATE[b.id].at || '').localeCompare(String(JOB_STATE[a.id].at || '')));
-    el('resultCount').textContent = `${wanted.length} ${VIEW}`;
-    el('list').replaceChildren(...wanted.map(card));
-    const emptyEl = el('empty');
-    emptyEl.hidden = wanted.length > 0;
-    emptyEl.textContent =
-      VIEW === 'applied'
-        ? 'Nothing marked as applied yet. Use the Applied button on a card.'
-        : 'Nothing saved yet. Use the Save button on a card.';
-    return;
-  }
-
-  let jobs = DATA.jobs.filter((j) => {
-    // Saving is a decision, the same as dismissing: once made, the job leaves
-    // this list and lives in its own tab. All is the untriaged pile.
-    const st = statusOf(j.id);
-    if ((st === 'saved' || st === 'dismissed') && !f.showHidden) return false;
-    if (!passesGrade(j, f.minGrade)) return false;
-    if ((j.credibility?.score ?? 50) < f.minCred) return false;
-    if (f.hideAgency && j.isAgency) return false;
-    if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
-    if (f.newOnly && !j.isNew) return false;
-    if (f.minComp && (j.salaryEstimate?.totalMax ?? 0) < f.minComp) return false;
-    // Company name only. Searching descriptions too meant typing "platform"
-    // returned half the feed, which is what the fit filter is already for.
-    if (f.q && !j.company.toLowerCase().includes(f.q)) return false;
-    return true;
-  });
-
-  const cmp = {
-    fit: (a, b) => gradeRank(b) - gradeRank(a) || b.keywordScore - a.keywordScore,
-    credibility: (a, b) => (b.credibility?.score ?? 0) - (a.credibility?.score ?? 0) || gradeRank(b) - gradeRank(a),
-    comp: (a, b) => (b.salaryEstimate?.totalMax ?? 0) - (a.salaryEstimate?.totalMax ?? 0),
-    date: (a, b) => String(b.postedAt || '').localeCompare(String(a.postedAt || '')),
-  }[f.sortBy] || ((a, b) => gradeRank(b) - gradeRank(a));
-  jobs = jobs.slice().sort(cmp);
-
-  // Applied jobs still float to the top: they stay in this list, and seeing
-  // them here is the reminder of what is already out the door.
-  jobs.sort((a, b) => (statusOf(b.id) === 'applied') - (statusOf(a.id) === 'applied'));
-
-  el('resultCount').textContent = `${jobs.length} shown`;
-
-  const list = el('list');
-  list.replaceChildren(...jobs.map(card));
-
-  const empty = el('empty');
-  empty.hidden = jobs.length > 0;
-  if (!jobs.length) {
-    empty.textContent = DATA.jobs.length
-      ? 'Nothing matches these filters. Most postings have not been read yet — set Fit to "any" to see them, or run the assessment pass.'
-      : 'No jobs in the feed yet. Has the pipeline run?';
-  }
-}
-
-// Assessed grades outrank the keyword score, which is triage only.
 const GRADE_ORDER = ['avoid', 'unknown', 'weak-fit', 'stretch', 'good-fit', 'strong-fit'];
 const GRADE_LABEL = {
   'strong-fit': 'Strong fit', 'good-fit': 'Good fit', stretch: 'Stretch',
@@ -303,68 +238,166 @@ const CRED_LABEL = {
   direct: 'Direct', likely: 'Likely real', unclear: 'Unclear', suspect: 'Compliance risk',
 };
 
-function card(job) {
-  const node = el('jobTpl').content.cloneNode(true);
-  const root = node.querySelector('.job');
-  const state = statusOf(job.id);
-  if (state) root.classList.add(state);
+// Company state lives in the same map as posting state, under a prefix, so it
+// syncs and merges through exactly the same path.
+const coKey = (companyKey) => `co:${companyKey}`;
+const coStatusOf = (companyKey) => statusOf(coKey(companyKey));
 
-  // Fit grade (from the reading pass) and provenance (from the rules).
+/** Group postings into company records, best-graded posting first. */
+function groupByCompany(jobs) {
+  const groups = new Map();
+  for (const j of jobs) {
+    if (!groups.has(j.companyKey)) {
+      groups.set(j.companyKey, { key: j.companyKey, name: j.company, jobs: [] });
+    }
+    groups.get(j.companyKey).jobs.push(j);
+  }
+  for (const g of groups.values()) {
+    g.jobs.sort((x, y) => gradeRank(y) - gradeRank(x) || y.keywordScore - x.keywordScore);
+    g.best = g.jobs[0];
+  }
+  return [...groups.values()];
+}
+
+function render() {
+  const f = currentFilters();
+  store.set(LS.filters, f);
+
+  const list = el('list');
+  const empty = el('empty');
+
+  // Saved and Applied are lists, not filters: they ignore the filter bar
+  // entirely, because a job you have already applied to should never vanish
+  // because today's minimum-fit setting moved.
+  if (VIEW !== 'all') {
+    // A company saved as a whole brings all its postings; a posting saved on
+    // its own brings only itself. Applied only ever exists on a posting.
+    const picked = DATA.jobs.filter((j) => {
+      if (statusOf(j.id) === VIEW) return true;
+      return VIEW === 'saved' && coStatusOf(j.companyKey) === 'saved';
+    });
+    const groups = groupByCompany(picked);
+    const stamp = (g) =>
+      Math.max(...g.jobs.map((j) => JOB_STATE[j.id]?.ts || 0), JOB_STATE[coKey(g.key)]?.ts || 0);
+    groups.sort((x, y) => stamp(y) - stamp(x));
+
+    el('resultCount').textContent =
+      `${picked.length} ${VIEW} · ${groups.length} ${groups.length === 1 ? 'company' : 'companies'}`;
+    list.replaceChildren(...groups.map((g) => companyCard(g, { view: VIEW })));
+    empty.hidden = picked.length > 0;
+    empty.textContent =
+      VIEW === 'applied'
+        ? 'Nothing marked as applied yet. Use the Applied button on a posting.'
+        : 'Nothing saved yet. Save a company, or a single posting inside one.';
+    return;
+  }
+
+  const jobs = DATA.jobs.filter((j) => {
+    // A decision — saved or dismissed, on the posting or on the company —
+    // takes it out of All. All is the untriaged pile.
+    const st = statusOf(j.id);
+    if ((st === 'saved' || st === 'dismissed') && !f.showHidden) return false;
+    const cst = coStatusOf(j.companyKey);
+    if ((cst === 'saved' || cst === 'dismissed') && !f.showHidden) return false;
+
+    if (!passesGrade(j, f.minGrade)) return false;
+    if ((j.credibility?.score ?? 50) < f.minCred) return false;
+    if (f.hideAgency && j.isAgency) return false;
+    if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
+    if (f.newOnly && !j.isNew) return false;
+    if (f.minComp && (j.salaryEstimate?.totalMax ?? 0) < f.minComp) return false;
+    // Company name only. Searching descriptions too meant typing "platform"
+    // returned half the feed, which is what the fit filter is already for.
+    if (f.q && !j.company.toLowerCase().includes(f.q)) return false;
+    return true;
+  });
+
+  const groups = groupByCompany(jobs);
+
+  // Companies are ranked by their best posting, because that is the one that
+  // decides whether the company is worth opening at all.
+  const cmp = {
+    fit: (a, b) => gradeRank(b.best) - gradeRank(a.best) || b.best.keywordScore - a.best.keywordScore,
+    credibility: (a, b) =>
+      (b.best.credibility?.score ?? 0) - (a.best.credibility?.score ?? 0) || gradeRank(b.best) - gradeRank(a.best),
+    comp: (a, b) =>
+      Math.max(...b.jobs.map((j) => j.salaryEstimate?.totalMax ?? 0)) -
+      Math.max(...a.jobs.map((j) => j.salaryEstimate?.totalMax ?? 0)),
+    date: (a, b) =>
+      String(b.jobs[0].postedAt || '').localeCompare(String(a.jobs[0].postedAt || '')),
+  }[f.sortBy] || ((a, b) => gradeRank(b.best) - gradeRank(a.best));
+  groups.sort(cmp);
+
+  // A company with something already applied to floats up: it is the reminder
+  // of what is out the door.
+  const hasApplied = (g) => g.jobs.some((j) => statusOf(j.id) === 'applied');
+  groups.sort((a, b) => hasApplied(b) - hasApplied(a));
+
+  el('resultCount').textContent =
+    `${groups.length} ${groups.length === 1 ? 'company' : 'companies'} · ` +
+    `${jobs.length} ${jobs.length === 1 ? 'role' : 'roles'}`;
+  list.replaceChildren(...groups.map((g) => companyCard(g, { view: 'all' })));
+
+  empty.hidden = groups.length > 0;
+  if (!groups.length) {
+    empty.textContent = DATA.jobs.length
+      ? 'Nothing matches these filters. Most postings have not been read yet — set Fit to "any" to see them, or run the assessment pass.'
+      : 'No jobs in the feed yet. Has the pipeline run?';
+  }
+}
+
+/* ------------------------------------------------------------- company --- */
+
+function companyCard(group, { view }) {
+  const node = el('coTpl').content.cloneNode(true);
+  const root = node.querySelector('.co');
+  const lead = group.best;
+  const coState = coStatusOf(group.key);
+  if (coState) root.classList.add(coState);
+
+  // The company's fit is its best posting's fit — that is the one that decides
+  // whether this card is worth opening.
   const gradeChip = node.querySelector('.grade-chip');
-  if (job.verdict) {
-    gradeChip.className = `grade-chip g-${job.verdict.grade}`;
-    gradeChip.innerHTML = `<span class="g-main">${GRADE_LABEL[job.verdict.grade] || job.verdict.grade}</span>`;
+  if (lead.verdict) {
+    gradeChip.className = `grade-chip g-${lead.verdict.grade}`;
+    gradeChip.innerHTML = `<span class="g-main">${GRADE_LABEL[lead.verdict.grade] || lead.verdict.grade}</span>` +
+      (group.jobs.length > 1 ? `<span class="g-sub">best of ${group.jobs.length}</span>` : '');
   } else {
     gradeChip.className = 'grade-chip g-pending';
-    gradeChip.innerHTML = `<span class="g-main">Not read yet</span><span class="g-sub">kw ${job.keywordScore}</span>`;
+    gradeChip.innerHTML = `<span class="g-main">Not read yet</span><span class="g-sub">kw ${lead.keywordScore}</span>`;
   }
 
-  const cred = job.credibility || { grade: 'unclear', score: 50 };
+  const bestCred = group.jobs.reduce((m, j) =>
+    (j.credibility?.score ?? 0) > (m?.score ?? -1) ? j.credibility : m, null) || { grade: 'unclear' };
   const credChip = node.querySelector('.cred-chip');
-  credChip.className = `cred-chip c-${cred.grade}`;
-  credChip.textContent = CRED_LABEL[cred.grade] || cred.grade;
-  credChip.title = (cred.reasons || []).map((r) => r.text).join('\n');
+  credChip.className = `cred-chip c-${bestCred.grade}`;
+  credChip.textContent = CRED_LABEL[bestCred.grade] || bestCred.grade;
+  credChip.title = (bestCred.reasons || []).map((r) => r.text).join('\n');
 
-  // Title + badges
-  const title = node.querySelector('.job-title');
-  title.textContent = job.title;
-  title.href = job.url;
+  const company = COMPANIES[group.key];
+  node.querySelector('.co-name').textContent = company?.name || group.name;
 
-  const company = COMPANIES[job.companyKey];
   const badges = node.querySelector('.badges');
-  if (state === 'applied') {
-    badges.append(badge(`applied ${JOB_STATE[job.id].at || ''}`.trim(), 'applied-badge'));
-  }
-  if (job.isNew) badges.append(badge('new', 'new'));
-  if (job.isAgency) badges.append(badge('agency', 'agency'));
-  const tier = job.companyTier ?? company?.tier;
+  if (coState === 'saved') badges.append(badge('saved', 'saved-badge'));
+  if (group.jobs.some((j) => j.isNew)) badges.append(badge('new', 'new'));
+  if (lead.isAgency) badges.append(badge('agency', 'agency'));
+  const tier = lead.companyTier ?? company?.tier;
   if (tier) badges.append(badge(`tier ${tier}`, tier === 1 ? 'tier1' : ''));
-  badges.append(badge(sourceLabel(job.source)));
+  badges.append(badge(sourceLabel(lead.source)));
 
-  // Meta line
-  node.querySelector('.job-meta').innerHTML = [
-    `<span><b>${escapeHTML(job.company)}</b></span>`,
-    `<span>${escapeHTML(job.location || 'Singapore')}</span>`,
-    job.postedAt ? `<span>posted ${timeAgo(job.postedAt)}</span>` : '',
-    job.minYearsExperience != null ? `<span>${job.minYearsExperience}y+ required</span>` : '',
-    job.applicants ? `<span>${job.applicants} applicants</span>` : '',
+  const bestComp = Math.max(...group.jobs.map((j) => j.salaryEstimate?.totalMax ?? 0));
+  node.querySelector('.co-meta').innerHTML = [
+    `<span><b>${group.jobs.length}</b> ${group.jobs.length === 1 ? 'role' : 'roles'} here</span>`,
+    `<span>${escapeHTML(lead.location || 'Singapore')}</span>`,
+    bestComp ? `<span>up to ${money(bestComp)}</span>` : '',
   ].filter(Boolean).join('');
 
-  // The assessment reads company-first: the note is what this particular
-  // posting is, and everything under it is the shared read on the employer,
-  // written once however many requisitions they have open.
+  // The employer analysis, written once and shared by every posting below.
   const box = node.querySelector('.assessment');
-  if (job.verdict) {
-    const v = job.verdict;
-    const c = v.company || {};
-    const others = (c.postingCount || 1) - 1;
+  const c = lead.verdict?.company;
+  if (c?.brief) {
     box.innerHTML = [
-      v.note ? `<p class="a-headline">${escapeHTML(v.note)}</p>` : '',
-      c.brief
-        ? `<p class="a-co-label">关于 ${escapeHTML(c.name || job.company)}` +
-          (others > 0 ? `（另有 ${others} 个在招岗位）` : '') +
-          `</p><p class="a-why">${escapeHTML(c.brief)}</p>`
-        : '',
+      `<p class="a-why">${escapeHTML(c.brief)}</p>`,
       c.matches?.length
         ? `<div class="a-list a-match"><b>匹配</b><ul>${c.matches.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
         : '',
@@ -378,11 +411,10 @@ function card(job) {
     box.remove();
   }
 
-  // Company brief from the enrichment pass
   const briefBox = node.querySelector('.company-brief');
   if (company?.brief) {
     briefBox.innerHTML = [
-      `<b>${escapeHTML(company.name || job.company)}</b> — ${escapeHTML(company.brief)}`,
+      escapeHTML(company.brief),
       company.sgPresence ? `<br>Singapore: ${escapeHTML(company.sgPresence)}` : '',
       company.watchOuts ? `<br><span class="watch">注意：${escapeHTML(company.watchOuts)}</span>` : '',
     ].join('');
@@ -390,16 +422,13 @@ function card(job) {
     briefBox.remove();
   }
 
-  // Reported compensation from Levels.fyi. Shown above the modelled estimate
-  // because a real number, however thin the sample, beats a tier multiplier.
-  // Their terms ask for attribution and a link back, hence the cited link.
+  // Reported compensation is a property of the employer, so it belongs here
+  // rather than repeated on every posting. Levels.fyi asks for the link back.
   const compBox = node.querySelector('.reported-comp');
-  const rc = job.reportedComp;
-  if (rc?.medianTotal) {
-    const ladder = (rc.levels || [])
-      .filter((l) => l.total)
-      .map((l) => `<span class="rung"><b>${escapeHTML(l.level)}</b> ${money(l.total)}</span>`)
-      .join('');
+  const rc = group.jobs.find((j) => j.reportedComp?.medianTotal)?.reportedComp;
+  if (rc) {
+    const ladder = (rc.levels || []).filter((l) => l.total)
+      .map((l) => `<span class="rung"><b>${escapeHTML(l.level)}</b> ${money(l.total)}</span>`).join('');
     compBox.innerHTML =
       `<div class="rc-head">Reported median <b>${money(rc.medianTotal)}</b> ` +
       `<span class="rc-note">software engineer, Singapore</span>` +
@@ -409,29 +438,95 @@ function card(job) {
     compBox.remove();
   }
 
-  // Salary
+  // Company-level actions. Saving or dismissing here covers every posting at
+  // once; the buttons inside each posting still act on that posting alone.
+  const saveBtn = node.querySelector('.save');
+  const dismissBtn = node.querySelector('.dismiss');
+  saveBtn.textContent = coState === 'saved' ? 'Company saved' : 'Save company';
+  saveBtn.classList.toggle('on', coState === 'saved');
+  dismissBtn.textContent = coState === 'dismissed' ? 'Restore company' : 'Dismiss company';
+  saveBtn.onclick = () => setState(coKey(group.key), 'saved');
+  dismissBtn.onclick = () => setState(coKey(group.key), 'dismissed');
+
+  // Glassdoor holds employer ratings but forbids automated access in its
+  // robots.txt, so this is a deep link rather than a scraped number.
+  node.querySelector('.glassdoor').href =
+    `https://www.glassdoor.sg/Search/results.htm?keyword=${encodeURIComponent(company?.name || group.name)}`;
+
+  // A saved company can have a hundred open roles. Render the best few and
+  // put the rest behind a click rather than pouring them onto the page.
+  const box2 = node.querySelector('.postings');
+  const CAP = 6;
+  const shown = group.jobs.slice(0, CAP);
+  box2.replaceChildren(...shown.map((j) => postingCard(j, { view })));
+
+  if (group.jobs.length > CAP) {
+    const more = document.createElement('button');
+    more.className = 'btn small ghost show-all';
+    more.textContent = `Show all ${group.jobs.length} roles`;
+    more.onclick = () => {
+      box2.replaceChildren(...group.jobs.map((j) => postingCard(j, { view })));
+    };
+    box2.append(more);
+  }
+  return node;
+}
+
+/* ------------------------------------------------------------- posting --- */
+
+function postingCard(job, { view }) {
+  const node = el('postTpl').content.cloneNode(true);
+  const root = node.querySelector('.post');
+  const state = statusOf(job.id);
+  if (state) root.classList.add(state);
+
+  const g = node.querySelector('.post-grade');
+  if (job.verdict) {
+    g.className = `post-grade g-${job.verdict.grade}`;
+    g.textContent = GRADE_LABEL[job.verdict.grade] || job.verdict.grade;
+  } else {
+    g.className = 'post-grade g-pending';
+    g.textContent = `kw ${job.keywordScore}`;
+  }
+
+  const title = node.querySelector('.job-title');
+  title.textContent = job.title;
+  title.href = job.url;
+
+  const badges = node.querySelector('.badges');
+  if (state === 'applied') badges.append(badge(`applied ${JOB_STATE[job.id].at || ''}`.trim(), 'applied-badge'));
+  if (state === 'saved') badges.append(badge('saved', 'saved-badge'));
+  if (job.isNew) badges.append(badge('new', 'new'));
+
+  node.querySelector('.job-meta').innerHTML = [
+    job.postedAt ? `<span>posted ${timeAgo(job.postedAt)}</span>` : '',
+    job.minYearsExperience != null ? `<span>${job.minYearsExperience}y+ required</span>` : '',
+    job.applicants ? `<span>${job.applicants} applicants</span>` : '',
+  ].filter(Boolean).join('');
+
+  // One line on this requisition specifically; the employer read is above.
+  const noteEl = node.querySelector('.post-note');
+  if (job.verdict?.note) noteEl.textContent = job.verdict.note;
+  else noteEl.remove();
+
   const s = job.salaryEstimate;
   const current = DATA.profileSnapshot?.currentTotalAnnual ?? 0;
   const trend = s.totalMax >= current * 1.1 ? 'up' : s.totalMax < current ? 'down' : '';
   node.querySelector('.salary').innerHTML = `
     <span class="amount ${trend}">${money(s.totalMin)} – ${money(s.totalMax)}</span>
     <span class="tag ${s.origin === 'posting' ? 'declared' : 'modelled'}">${s.origin === 'posting' ? 'declared' : 'estimated'}</span>
-    <span class="muted">total comp</span>
     <span class="note">${escapeHTML(s.note)}</span>`;
 
-  // Why this score
   const reasons = node.querySelector('.reasons');
-  for (const r of (job.reasons || []).slice(0, job.verdict ? 3 : 6)) {
+  for (const r of (job.reasons || []).slice(0, job.verdict ? 2 : 4)) {
     const li = document.createElement('li');
     li.className = r.kind;
     li.textContent = r.text;
     reasons.append(li);
   }
 
-  // Actions
   node.querySelector('.apply').href = job.url;
   const saveBtn = node.querySelector('.save');
-  // Not '.applied': the card root carries that as a state class.
   const appliedBtn = node.querySelector('.mark-applied');
   const dismissBtn = node.querySelector('.dismiss');
 
@@ -443,11 +538,6 @@ function card(job) {
   saveBtn.onclick = () => setState(job.id, 'saved');
   appliedBtn.onclick = () => setState(job.id, 'applied');
   dismissBtn.onclick = () => setState(job.id, 'dismissed');
-
-  // Glassdoor holds employer ratings but forbids automated access in its
-  // robots.txt, so this is a deep link rather than a scraped number.
-  node.querySelector('.glassdoor').href =
-    `https://www.glassdoor.sg/Search/results.htm?keyword=${encodeURIComponent(company?.name || job.company)}`;
 
   // The date is editable because you often mark a job applied days later.
   const dateWrap = node.querySelector('.applied-on');
@@ -569,9 +659,15 @@ async function pushState() {
 }
 
 function renderCounts() {
-  const n = (s) => Object.values(JOB_STATE).filter((v) => v.status === s).length;
-  el('nSaved').textContent = n('saved');
-  el('nApplied').textContent = n('applied');
+  // Count the postings each tab will actually show, not the state entries:
+  // one saved company stands for every posting it has open.
+  const jobs = DATA?.jobs || [];
+  const saved = jobs.filter(
+    (j) => statusOf(j.id) === 'saved' || coStatusOf(j.companyKey) === 'saved',
+  ).length;
+  const applied = jobs.filter((j) => statusOf(j.id) === 'applied').length;
+  el('nSaved').textContent = saved;
+  el('nApplied').textContent = applied;
 }
 
 /* -------------------------------------------------------------- helpers --- */
