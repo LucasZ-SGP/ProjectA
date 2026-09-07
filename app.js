@@ -213,7 +213,7 @@ function render() {
     if (f.minComp && (j.salaryEstimate?.totalMax ?? 0) < f.minComp) return false;
     if (f.q) {
       const hay = [j.title, j.company, j.location, (j.skills || []).join(' '), j.description,
-        j.verdict?.headline, j.verdict?.why].join(' ').toLowerCase();
+        j.verdict?.note, j.verdict?.company?.brief].join(' ').toLowerCase();
       if (!hay.includes(f.q)) return false;
     }
     return true;
@@ -311,21 +311,29 @@ function card(job) {
     job.applicants ? `<span>${job.applicants} applicants</span>` : '',
   ].filter(Boolean).join('');
 
-  // The actual assessment: what was read, matched and missing.
+  // The assessment reads company-first: the note is what this particular
+  // posting is, and everything under it is the shared read on the employer,
+  // written once however many requisitions they have open.
   const box = node.querySelector('.assessment');
   if (job.verdict) {
     const v = job.verdict;
+    const c = v.company || {};
+    const others = (c.postingCount || 1) - 1;
     box.innerHTML = [
-      v.headline ? `<p class="a-headline">${escapeHTML(v.headline)}</p>` : '',
-      v.why ? `<p class="a-why">${escapeHTML(v.why)}</p>` : '',
-      v.matches?.length
-        ? `<div class="a-list a-match"><b>匹配</b><ul>${v.matches.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
+      v.note ? `<p class="a-headline">${escapeHTML(v.note)}</p>` : '',
+      c.brief
+        ? `<p class="a-co-label">关于 ${escapeHTML(c.name || job.company)}` +
+          (others > 0 ? `（另有 ${others} 个在招岗位）` : '') +
+          `</p><p class="a-why">${escapeHTML(c.brief)}</p>`
         : '',
-      v.gaps?.length
-        ? `<div class="a-list a-gap"><b>差距</b><ul>${v.gaps.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
+      c.matches?.length
+        ? `<div class="a-list a-match"><b>匹配</b><ul>${c.matches.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
         : '',
-      v.compRead ? `<p class="a-comp">${escapeHTML(v.compRead)}</p>` : '',
-      v.verdict ? `<p class="a-verdict">${escapeHTML(v.verdict)}</p>` : '',
+      c.gaps?.length
+        ? `<div class="a-list a-gap"><b>差距</b><ul>${c.gaps.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
+        : '',
+      c.compRead ? `<p class="a-comp">${escapeHTML(c.compRead)}</p>` : '',
+      c.verdict ? `<p class="a-verdict">${escapeHTML(c.verdict)}</p>` : '',
     ].join('');
   } else {
     box.remove();
