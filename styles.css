@@ -137,6 +137,13 @@ body {
 .sync-status.ok  { color: var(--good); }
 .sync-status.bad { color: var(--bad); }
 
+.pager {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  max-width: 1180px; margin: 4px auto 40px; padding: 0 20px;
+}
+.page-info { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pager .btn:disabled { opacity: .4; cursor: default; }
+
 /* ------------------------------------------------------ company cards --- */
 .co {
   display: flex; gap: 14px; background: var(--surface);

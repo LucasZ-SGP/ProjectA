@@ -44,6 +44,8 @@ let COMPANIES = {};
 // Earlier versions stored a bare string, so migrate anything of that shape.
 let JOB_STATE = migrateState(store.get(LS.state, {}));
 let VIEW = 'all';
+let PAGE = 1;
+const PER_PAGE = 10;      // companies per page
 
 function migrateState(raw) {
   const out = {};
@@ -283,7 +285,7 @@ function render() {
 
     el('resultCount').textContent =
       `${picked.length} ${VIEW} · ${groups.length} ${groups.length === 1 ? 'company' : 'companies'}`;
-    list.replaceChildren(...groups.map((g) => companyCard(g, { view: VIEW })));
+    list.replaceChildren(...paginate(groups).map((g) => companyCard(g, { view: VIEW })));
     empty.hidden = picked.length > 0;
     empty.textContent =
       VIEW === 'applied'
@@ -336,7 +338,7 @@ function render() {
   el('resultCount').textContent =
     `${groups.length} ${groups.length === 1 ? 'company' : 'companies'} · ` +
     `${jobs.length} ${jobs.length === 1 ? 'role' : 'roles'}`;
-  list.replaceChildren(...groups.map((g) => companyCard(g, { view: 'all' })));
+  list.replaceChildren(...paginate(groups).map((g) => companyCard(g, { view: 'all' })));
 
   empty.hidden = groups.length > 0;
   if (!groups.length) {
@@ -344,6 +346,26 @@ function render() {
       ? 'Nothing matches these filters. Most postings have not been read yet — set Fit to "any" to see them, or run the assessment pass.'
       : 'No jobs in the feed yet. Has the pipeline run?';
   }
+}
+
+/**
+ * Slice the company list to the current page and drive the controls. Clamps
+ * PAGE so that narrowing a filter cannot strand you on an empty page 7.
+ */
+function paginate(groups) {
+  const pages = Math.max(1, Math.ceil(groups.length / PER_PAGE));
+  PAGE = Math.min(Math.max(1, PAGE), pages);
+
+  const pager = el('pager');
+  pager.hidden = groups.length <= PER_PAGE;
+  if (!pager.hidden) {
+    const from = (PAGE - 1) * PER_PAGE + 1;
+    const to = Math.min(PAGE * PER_PAGE, groups.length);
+    el('pageInfo').textContent = `${from}–${to} of ${groups.length} companies · page ${PAGE}/${pages}`;
+    el('pagePrev').disabled = PAGE === 1;
+    el('pageNext').disabled = PAGE === pages;
+  }
+  return groups.slice((PAGE - 1) * PER_PAGE, PAGE * PER_PAGE);
 }
 
 /* ------------------------------------------------------------- company --- */
@@ -739,9 +761,18 @@ el('settingsBtn').onclick = () => {
 
 el('refreshBtn').onclick = () => load({ silent: true });
 
+const goToPage = (n) => {
+  PAGE = n;
+  render();
+  el('list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+el('pagePrev').onclick = () => goToPage(PAGE - 1);
+el('pageNext').onclick = () => goToPage(PAGE + 1);
+
 for (const tab of document.querySelectorAll('.view-tab')) {
   tab.onclick = () => {
     VIEW = tab.dataset.view;
+    PAGE = 1;
     document.querySelectorAll('.view-tab').forEach((t) => t.classList.toggle('on', t === tab));
     el('controls').hidden = VIEW !== 'all';   // filters only mean anything in All
     render();
@@ -749,7 +780,9 @@ for (const tab of document.querySelectorAll('.view-tab')) {
 }
 
 for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'sortBy', 'hideAgency', 'declaredOnly', 'newOnly', 'showHidden']) {
-  el(id).addEventListener('input', render);
+  // Any change to the result set puts you back on page 1; staying on page 6 of
+  // a list that just became two pages long is never what you meant.
+  el(id).addEventListener('input', () => { PAGE = 1; render(); });
 }
 
 // Restore last-used filters before the first paint.
