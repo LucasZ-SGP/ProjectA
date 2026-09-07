@@ -285,7 +285,10 @@ function render() {
     groups.sort((x, y) => stamp(y) - stamp(x));
 
     el('resultCount').textContent =
-      `${picked.length} ${VIEW} · ${groups.length} ${groups.length === 1 ? 'company' : 'companies'}`;
+      VIEW === 'saved'
+        ? `${groups.length} ${groups.length === 1 ? 'company' : 'companies'} saved · ` +
+          `${picked.length} ${picked.length === 1 ? 'role' : 'roles'}`
+        : `${picked.length} applied · ${groups.length} ${groups.length === 1 ? 'company' : 'companies'}`;
     list.replaceChildren(...paginate(groups).map((g) => companyCard(g, { view: VIEW })));
     empty.hidden = picked.length > 0;
     empty.textContent =
@@ -707,15 +710,17 @@ async function pushState() {
 }
 
 function renderCounts() {
-  // Count the postings each tab will actually show, not the state entries:
-  // one saved company stands for every posting it has open.
   const jobs = DATA?.jobs || [];
-  const saved = jobs.filter(
-    (j) => statusOf(j.id) === 'saved' || coStatusOf(j.companyKey) === 'saved',
-  ).length;
-  const applied = jobs.filter((j) => statusOf(j.id) === 'applied').length;
-  el('nSaved').textContent = saved;
-  el('nApplied').textContent = applied;
+
+  // Saved counts companies: saving Airwallex is one decision, not the 172 open
+  // roles it drags in. Applied stays a posting count — you apply to a job, and
+  // three applications at one employer are three things done, not one.
+  const savedCompanies = new Set(
+    jobs.filter((j) => statusOf(j.id) === 'saved' || coStatusOf(j.companyKey) === 'saved')
+      .map((j) => j.companyKey),
+  );
+  el('nSaved').textContent = savedCompanies.size;
+  el('nApplied').textContent = jobs.filter((j) => statusOf(j.id) === 'applied').length;
 }
 
 /* -------------------------------------------------------------- helpers --- */
