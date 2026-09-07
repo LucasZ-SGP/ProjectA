@@ -45,6 +45,26 @@
       <input id="cfgToken" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
     </label>
 
+    <hr class="cfg-rule">
+
+    <p class="cfg-note">
+      <strong>Cross-device sync (optional).</strong> Saved, applied and dismissed
+      live in this browser unless you point them at a repo. Use a
+      <strong>separate</strong> private repo for this — the token below needs
+      <strong>write</strong> access, and you do not want a write token in a browser
+      that can also reach your ledger and investment data.
+    </p>
+
+    <label>State repository <span class="muted">a private repo of its own, e.g. owner/dashboard-state</span>
+      <input id="cfgStateRepo" type="text" placeholder="owner/dashboard-state" autocomplete="off" spellcheck="false">
+    </label>
+
+    <label>State token <span class="muted">fine-grained, Contents: Read and write, that repo only</span>
+      <input id="cfgStateToken" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
+    </label>
+
+    <p class="sync-status" id="syncStatus"></p>
+
     <details class="token-help">
       <summary>How to make a token with the least possible power</summary>
       <ol>
@@ -81,7 +101,7 @@
 
 <!-- ----------------------------------------------------------- filters --- -->
 <section id="controls" class="controls" hidden>
-  <input id="q" type="search" placeholder="Search title, company, skill, description…" autocomplete="off">
+  <input id="q" type="search" placeholder="Search company name…" autocomplete="off">
 
   <label class="ctl">Fit
     <select id="minGrade">

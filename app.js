@@ -19,6 +19,13 @@ const LS = {
   filters: 'jobdash.filters',
 };
 
+// Where saved / applied / dismissed lives when sync is configured. One small
+// JSON file in a repo of its own, so the token that can write it cannot touch
+// anything else.
+const SYNC_PATH = 'dashboard-state.json';
+let SYNC_SHA = null;      // blob sha of the copy we last saw, for safe updates
+let SYNC_TIMER = null;
+
 const el = (id) => document.getElementById(id);
 const store = {
   get(key, fallback) {
@@ -40,10 +47,38 @@ let VIEW = 'all';
 function migrateState(raw) {
   const out = {};
   for (const [id, v] of Object.entries(raw || {})) {
-    if (typeof v === 'string') out[id] = { status: v, at: null };
-    else if (v && v.status) out[id] = v;
+    if (typeof v === 'string') out[id] = { status: v, at: null, ts: 0 };
+    else if (v && v.status) out[id] = { ts: 0, ...v };
   }
   return out;
+}
+
+// Deletions have to be recorded, or un-saving something on the laptop would be
+// undone by the phone's copy still listing it.
+let TOMBSTONES = store.get('jobdash.removed', {});
+
+/**
+ * Merge two devices' state. Every record carries the millisecond timestamp of
+ * the change that produced it, including deletions, so the later edit wins per
+ * job rather than one whole device's copy overwriting the other's.
+ */
+function mergeState(localEntries, localRemoved, remote) {
+  const entries = {};
+  const removed = { ...(localRemoved || {}), ...(remote?.removed || {}) };
+  for (const [id, t] of Object.entries(localRemoved || {})) {
+    removed[id] = Math.max(t, remote?.removed?.[id] || 0);
+  }
+  const all = new Set([...Object.keys(localEntries || {}), ...Object.keys(remote?.entries || {})]);
+  for (const id of all) {
+    const a = localEntries?.[id];
+    const b = remote?.entries?.[id];
+    const winner = (a?.ts || 0) >= (b?.ts || 0) ? a : b;
+    if (!winner) continue;
+    if ((removed[id] || 0) > (winner.ts || 0)) continue;   // deleted after this edit
+    entries[id] = winner;
+    delete removed[id];
+  }
+  return { entries, removed };
 }
 
 const today = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD, local
@@ -111,6 +146,10 @@ async function load({ silent = false } = {}) {
     renderStats();
     renderCounts();
     render();
+
+    // Pull the other devices' saved/applied state after the feed is on screen,
+    // so a slow or misconfigured sync never blocks the jobs from rendering.
+    pullState();
   } catch (err) {
     setStatus('err');
     showSetup();
@@ -127,6 +166,8 @@ function showSetup() {
   el('cfgRepo').value = cfg.repo || '';
   el('cfgBranch').value = cfg.branch || 'main';
   el('cfgToken').value = cfg.token || '';
+  el('cfgStateRepo').value = cfg.stateRepo || '';
+  el('cfgStateToken').value = cfg.stateToken || '';
   el('setup').hidden = false;
 }
 
@@ -211,11 +252,9 @@ function render() {
     if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
     if (f.newOnly && !j.isNew) return false;
     if (f.minComp && (j.salaryEstimate?.totalMax ?? 0) < f.minComp) return false;
-    if (f.q) {
-      const hay = [j.title, j.company, j.location, (j.skills || []).join(' '), j.description,
-        j.verdict?.note, j.verdict?.company?.brief].join(' ').toLowerCase();
-      if (!hay.includes(f.q)) return false;
-    }
+    // Company name only. Searching descriptions too meant typing "platform"
+    // returned half the feed, which is what the fit filter is already for.
+    if (f.q && !j.company.toLowerCase().includes(f.q)) return false;
     return true;
   });
 
@@ -419,7 +458,8 @@ function card(job) {
     dateInput.max = today();
     dateInput.onchange = () => {
       JOB_STATE[job.id].at = dateInput.value || today();
-      store.set(LS.state, JOB_STATE);
+      JOB_STATE[job.id].ts = Date.now();
+      persistState();
       render();
     };
   }
@@ -437,11 +477,96 @@ function card(job) {
 }
 
 function setState(id, value) {
-  if (statusOf(id) === value) delete JOB_STATE[id];
-  else JOB_STATE[id] = { status: value, at: JOB_STATE[id]?.at || today() };
-  store.set(LS.state, JOB_STATE);
+  const ts = Date.now();
+  if (statusOf(id) === value) {
+    delete JOB_STATE[id];
+    TOMBSTONES[id] = ts;
+  } else {
+    JOB_STATE[id] = { status: value, at: JOB_STATE[id]?.at || today(), ts };
+    delete TOMBSTONES[id];
+  }
+  persistState();
   renderCounts();
   render();
+}
+
+function persistState() {
+  store.set(LS.state, JOB_STATE);
+  store.set('jobdash.removed', TOMBSTONES);
+  schedulePush();
+}
+
+/* -------------------------------------------------------- cross-device --- */
+
+const syncCfg = () => {
+  const c = store.get(LS.cfg, {}) || {};
+  return c.stateRepo && c.stateToken
+    ? { repo: c.stateRepo, token: c.stateToken, branch: c.stateBranch || 'main' }
+    : null;
+};
+
+function syncStatus(text, kind = '') {
+  const n = el('syncStatus');
+  if (n) { n.textContent = text; n.className = `sync-status ${kind}`; }
+}
+
+async function pullState() {
+  const cfg = syncCfg();
+  if (!cfg) return;
+  syncStatus('syncing…');
+  try {
+    const url = `https://api.github.com/repos/${cfg.repo}/contents/${SYNC_PATH}?ref=${encodeURIComponent(cfg.branch)}`;
+    const res = await fetch(url, {
+      headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${cfg.token}`,
+                 'X-GitHub-Api-Version': '2022-11-28' },
+    });
+    if (res.status === 404) { SYNC_SHA = null; syncStatus('synced (new file)', 'ok'); return schedulePush(0); }
+    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+    const meta = await res.json();
+    SYNC_SHA = meta.sha;
+    const remote = JSON.parse(decodeURIComponent(escape(atob(meta.content.replace(/\n/g, '')))));
+    const merged = mergeState(JOB_STATE, TOMBSTONES, remote);
+    JOB_STATE = merged.entries;
+    TOMBSTONES = merged.removed;
+    store.set(LS.state, JOB_STATE);
+    store.set('jobdash.removed', TOMBSTONES);
+    syncStatus('synced', 'ok');
+    renderCounts();
+    render();
+  } catch (err) {
+    syncStatus(`sync failed: ${err.message}`, 'bad');
+  }
+}
+
+function schedulePush(delay = 1500) {
+  if (!syncCfg()) return;
+  clearTimeout(SYNC_TIMER);
+  SYNC_TIMER = setTimeout(pushState, delay);
+}
+
+async function pushState() {
+  const cfg = syncCfg();
+  if (!cfg) return;
+  syncStatus('saving…');
+  const body = { entries: JOB_STATE, removed: TOMBSTONES, updatedAt: new Date().toISOString() };
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(body, null, 1))));
+  try {
+    const res = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${SYNC_PATH}`, {
+      method: 'PUT',
+      headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${cfg.token}`,
+                 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `state: ${new Date().toISOString().slice(0, 10)}`,
+                             content, branch: cfg.branch, ...(SYNC_SHA ? { sha: SYNC_SHA } : {}) }),
+    });
+    // 409 means another device wrote first: take theirs, merge, try again.
+    if (res.status === 409 || res.status === 422) { await pullState(); return schedulePush(500); }
+    if (res.status === 403) throw new Error('token lacks Contents:write on the state repo');
+    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+    SYNC_SHA = (await res.json()).content.sha;
+    syncStatus('synced', 'ok');
+  } catch (err) {
+    syncStatus(`sync failed: ${err.message}`, 'bad');
+  }
 }
 
 function renderCounts() {
@@ -496,7 +621,11 @@ el('saveCfg').onclick = async () => {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return setMsg('Repository should look like owner/name.', 'err');
   if (!token) return setMsg('A token is required to read a private repo.', 'err');
 
-  store.set(LS.cfg, { repo, branch: el('cfgBranch').value.trim() || 'main', token });
+  store.set(LS.cfg, {
+    repo, branch: el('cfgBranch').value.trim() || 'main', token,
+    stateRepo: el('cfgStateRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, ''),
+    stateToken: el('cfgStateToken').value.trim(),
+  });
   setMsg('Connecting…', '');
   await load();
 };
@@ -504,6 +633,7 @@ el('saveCfg').onclick = async () => {
 el('clearCfg').onclick = () => {
   store.del(LS.cfg);
   el('cfgToken').value = '';
+  el('cfgStateToken').value = '';
   setMsg('Token removed from this browser.', 'ok');
   setStatus('');
 };
