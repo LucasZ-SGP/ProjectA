@@ -694,8 +694,10 @@ function pendingCount() {
 
 function renderSyncBtn() {
   const btn = el('syncBtn');
+  const reload = el('reloadBtn');
   if (!btn) return;
-  if (!syncCfg()) { btn.hidden = true; return; }
+  if (!syncCfg()) { btn.hidden = true; if (reload) reload.hidden = true; return; }
+  if (reload) reload.hidden = false;
   const n = pendingCount();
   btn.hidden = false;
   btn.disabled = n === 0;
@@ -832,6 +834,18 @@ el('collapseAll').onclick = () => {
   }
   store.set('jobdash.collapsed', COLLAPSED);
   render();
+};
+
+// The counterpart to Save. pullState merges per job on the change timestamp,
+// so pressing this with unsaved local edits cannot lose them — the later edit
+// still wins, whichever device made it.
+el('reloadBtn').onclick = async () => {
+  const btn = el('reloadBtn');
+  btn.disabled = true;
+  btn.textContent = 'Reloading…';
+  await pullState();
+  btn.textContent = 'Reload';
+  btn.disabled = false;
 };
 
 el('syncBtn').onclick = async () => {

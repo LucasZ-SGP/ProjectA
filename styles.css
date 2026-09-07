@@ -361,7 +361,11 @@ body {
 .job-score.s-lo .score-num { color: var(--muted); }
 
 .job-body { min-width: 0; }
+/* The header is space-between, so adding the collapse toggle as a third child
+   pushed the company name to the middle. Let the name absorb the free space so
+   it stays next to the toggle and the badges keep the right edge. */
 .co .job-head { align-items: center; }
+.co .co-name { margin-right: auto; }
 .job-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .job-head h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; }
 .job-title { color: var(--text); text-decoration: none; }
