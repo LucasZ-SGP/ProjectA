@@ -148,6 +148,7 @@ async function load({ silent = false } = {}) {
       : '';
     renderStats();
     renderCounts();
+    renderSyncBtn();
     render();
 
     // Pull the other devices' saved/applied state after the feed is on screen,
@@ -605,7 +606,7 @@ function setState(id, value) {
 function persistState() {
   store.set(LS.state, JOB_STATE);
   store.set('jobdash.removed', TOMBSTONES);
-  schedulePush();
+  renderSyncBtn();     // local write is instant; the repo write is on request
 }
 
 /* -------------------------------------------------------- cross-device --- */
@@ -631,7 +632,7 @@ async function pullState() {
       headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${cfg.token}`,
                  'X-GitHub-Api-Version': '2022-11-28' },
     });
-    if (res.status === 404) { SYNC_SHA = null; syncStatus('synced (new file)', 'ok'); return schedulePush(0); }
+    if (res.status === 404) { SYNC_SHA = null; syncStatus('no state file yet — press Save to create it'); return renderSyncBtn(); }
     if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
     const meta = await res.json();
     SYNC_SHA = meta.sha;
@@ -643,16 +644,38 @@ async function pullState() {
     store.set('jobdash.removed', TOMBSTONES);
     syncStatus('synced', 'ok');
     renderCounts();
+    renderSyncBtn();
     render();
   } catch (err) {
     syncStatus(`sync failed: ${err.message}`, 'bad');
   }
 }
 
-function schedulePush(delay = 4000) {
-  if (!syncCfg()) return;
-  clearTimeout(SYNC_TIMER);
-  SYNC_TIMER = setTimeout(pushState, delay);
+/**
+ * Everything decided since the last successful write. Kept as a timestamp
+ * rather than a flag so it survives a reload and can be counted, and so a pull
+ * that brings in another device's edits does not mark them as ours to push.
+ */
+const lastSynced = () => store.get('jobdash.syncedAt', 0);
+
+function pendingCount() {
+  const since = lastSynced();
+  const n = (o) => Object.values(o || {}).filter((v) => (typeof v === 'number' ? v : v.ts || 0) > since).length;
+  return n(JOB_STATE) + n(TOMBSTONES);
+}
+
+function renderSyncBtn() {
+  const btn = el('syncBtn');
+  if (!btn) return;
+  if (!syncCfg()) { btn.hidden = true; return; }
+  const n = pendingCount();
+  btn.hidden = false;
+  btn.disabled = n === 0;
+  btn.textContent = n === 0 ? 'Synced' : `Save ${n} change${n === 1 ? '' : 's'}`;
+  // .primary paints the label white, so the ghost outline has to come off with
+  // it or the button reads as an empty box.
+  btn.classList.toggle('primary', n > 0);
+  btn.classList.toggle('ghost', n === 0);
 }
 
 async function pushState() {
@@ -670,11 +693,14 @@ async function pushState() {
                              content, branch: cfg.branch, ...(SYNC_SHA ? { sha: SYNC_SHA } : {}) }),
     });
     // 409 means another device wrote first: take theirs, merge, try again.
-    if (res.status === 409 || res.status === 422) { await pullState(); return schedulePush(500); }
+    // Another device wrote first: take theirs, merge, and write the union.
+    if (res.status === 409 || res.status === 422) { await pullState(); return pushState(); }
     if (res.status === 403) throw new Error('token lacks Contents:write on the state repo');
     if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
     SYNC_SHA = (await res.json()).content.sha;
+    store.set('jobdash.syncedAt', Date.now());
     syncStatus('synced', 'ok');
+    renderSyncBtn();
   } catch (err) {
     syncStatus(`sync failed: ${err.message}`, 'bad');
   }
@@ -766,6 +792,20 @@ const goToPage = (n) => {
   render();
   el('list').scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
+el('syncBtn').onclick = async () => {
+  const btn = el('syncBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  await pushState();
+  renderSyncBtn();
+};
+
+// A tab closed with decisions still only in localStorage is not lost, but it is
+// invisible to the other device, which is the whole point of syncing.
+window.addEventListener('beforeunload', (e) => {
+  if (syncCfg() && pendingCount() > 0) { e.preventDefault(); e.returnValue = ''; }
+});
+
 el('pagePrev').onclick = () => goToPage(PAGE - 1);
 el('pageNext').onclick = () => goToPage(PAGE + 1);
 

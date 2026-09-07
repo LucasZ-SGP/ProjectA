@@ -17,6 +17,7 @@
     <span class="stamp" id="generatedAt"></span>
   </div>
   <div class="topbar-actions">
+    <button id="syncBtn" class="btn ghost" hidden title="Write saved, applied and dismissed back to the repo"></button>
     <button id="refreshBtn" class="btn ghost" title="Re-fetch from the private repo">Refresh</button>
     <button id="settingsBtn" class="btn">Settings</button>
   </div>
@@ -52,8 +53,9 @@
       Sync saved, applied and dismissed across devices
     </label>
     <p class="cfg-note">
-      Writes <code>jobs/dashboard-state.json</code> to the same repo, so the token
-      above needs <strong>Contents: Read and write</strong> rather than read-only.
+      Writes <code>jobs/dashboard-state.json</code> to the same repo when you press
+      <strong>Save</strong> in the header — one commit per press, not one per click.
+      The token above needs <strong>Contents: Read and write</strong> rather than read-only.
       That token can then change anything in that repo, this dashboard's data
       included. Untick to keep the three lists in this browser only, which needs
       no write access at all.
