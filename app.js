@@ -650,7 +650,15 @@ function syncStatus(text, kind = '') {
   if (n) { n.textContent = text; n.className = `sync-status ${kind}`; }
 }
 
-async function pullState() {
+/**
+ * Fetch the repo's copy of saved / applied / dismissed.
+ *
+ * On load this merges: local edits made since the last write are still yours,
+ * and the later edit wins per job. Pressing Reload passes overwrite, which
+ * throws local away and takes the repo's copy verbatim — that is the point of
+ * the button, so it asks first when there is anything to lose.
+ */
+async function pullState({ overwrite = false } = {}) {
   const cfg = syncCfg();
   if (!cfg) return;
   syncStatus('syncing…');
@@ -665,9 +673,16 @@ async function pullState() {
     const meta = await res.json();
     SYNC_SHA = meta.sha;
     const remote = JSON.parse(decodeURIComponent(escape(atob(meta.content.replace(/\n/g, '')))));
-    const merged = mergeState(JOB_STATE, TOMBSTONES, remote);
-    JOB_STATE = merged.entries;
-    TOMBSTONES = merged.removed;
+    if (overwrite) {
+      JOB_STATE = migrateState(remote.entries);
+      TOMBSTONES = remote.removed || {};
+      // Nothing local is outstanding any more: it was just discarded.
+      store.set('jobdash.syncedAt', Date.now());
+    } else {
+      const merged = mergeState(JOB_STATE, TOMBSTONES, remote);
+      JOB_STATE = merged.entries;
+      TOMBSTONES = merged.removed;
+    }
     store.set(LS.state, JOB_STATE);
     store.set('jobdash.removed', TOMBSTONES);
     syncStatus('synced', 'ok');
@@ -840,10 +855,15 @@ el('collapseAll').onclick = () => {
 // so pressing this with unsaved local edits cannot lose them — the later edit
 // still wins, whichever device made it.
 el('reloadBtn').onclick = async () => {
+  const n = pendingCount();
+  if (n > 0 && !confirm(
+    `Discard ${n} unsaved change${n === 1 ? '' : 's'} and take the repo's copy?`,
+  )) return;
+
   const btn = el('reloadBtn');
   btn.disabled = true;
   btn.textContent = 'Reloading…';
-  await pullState();
+  await pullState({ overwrite: true });
   btn.textContent = 'Reload';
   btn.disabled = false;
 };

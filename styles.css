@@ -428,8 +428,20 @@ body {
   .topbar { padding: 10px 14px; }
   .brand h1 { white-space: nowrap; }
   .stamp { display: none; }
-  .job { grid-template-columns: 1fr; gap: 8px; padding: 12px; }
+  /* The card is .co since it became a company card; this rule still said .job,
+     so on a phone the rail stayed beside the body and took 40% of the width. */
+  .co { flex-direction: column; gap: 10px; padding: 13px 14px; }
   .job-rail { flex-direction: row; border-right: none; padding-right: 0; align-items: center; }
   .grade-chip { flex-direction: row; gap: 6px; padding: 4px 10px; }
   .controls { gap: 8px; }
+
+  /* Stack the label above its control so neither gets squeezed. */
+  .controls label:not(.chk) { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+  .controls select, .controls input[type="search"] { width: 100%; }
+
+  .co-meta { gap: 8px; }
+  .post-head { gap: 6px; }
+  .job-actions { gap: 6px; }
+  .job-actions .btn { flex: 1 1 auto; }
+  .pager { gap: 8px; }
 }
