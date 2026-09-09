@@ -314,7 +314,12 @@ function render() {
     if (f.hideAgency && j.isAgency) return false;
     if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
     if (f.newOnly && !j.isNew) return false;
-    if (f.minComp && (j.salaryEstimate?.totalMax ?? 0) < f.minComp) return false;
+    // Only ever filter on a figure the employer actually declared. Modelled
+    // brackets are a placeholder for most postings — no company tier, level and
+    // role inferred from the title — so filtering on them hides real roles on
+    // the strength of a guess. A posting with no declared range is kept and
+    // judged on the company instead.
+    if (f.minComp && j.salaryEstimate?.origin === 'posting' && (j.salaryEstimate?.totalMax ?? 0) < f.minComp) return false;
     // Company name only. Searching descriptions too meant typing "platform"
     // returned half the feed, which is what the fit filter is already for.
     if (f.q && !j.company.toLowerCase().includes(f.q)) return false;
