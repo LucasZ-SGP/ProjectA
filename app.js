@@ -431,7 +431,12 @@ function companyCard(group, { view }) {
   const badges = node.querySelector('.badges');
   if (coState === 'saved') badges.append(badge('saved', 'saved-badge'));
   if (group.jobs.some((j) => j.isNew)) badges.append(badge('new', 'new'));
-  if (lead.isAgency) badges.append(badge('agency', 'agency'));
+  // Two different things, and only one of them is a warning. `isAgency` now
+  // means the role sits on the intermediary's own books - a contract placement.
+  // `postedByRecruiter` just means a search firm is carrying a client's role,
+  // which is ordinary and costs the posting nothing.
+  if (lead.isAgency) badges.append(badge('contract placement', 'agency'));
+  else if (lead.postedByRecruiter) badges.append(badge('via recruiter'));
   const tier = lead.companyTier ?? company?.tier;
   if (tier) badges.append(badge(`tier ${tier}`, tier === 1 ? 'tier1' : ''));
   badges.append(badge(sourceLabel(lead.source)));
