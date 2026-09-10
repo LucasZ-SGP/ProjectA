@@ -183,12 +183,17 @@ function setMsg(text, cls) {
   m.className = `setup-msg ${cls || ''}`;
 }
 
+const declaredMax = (jobs) =>
+  Math.max(0, ...jobs.filter((j) => j.salaryEstimate?.origin === 'posting').map((j) => j.salaryEstimate.totalMax ?? 0));
+
 /* ------------------------------------------------------------ rendering --- */
 
 function renderStats() {
   const c = DATA.counts || {};
   const p = DATA.profileSnapshot || {};
-  const above = DATA.jobs.filter((j) => j.salaryEstimate?.totalMax >= (p.targetTotalAnnualMin || 0)).length;
+  const above = DATA.jobs.filter(
+    (j) => j.salaryEstimate?.origin === 'posting' && j.salaryEstimate.totalMax >= (p.targetTotalAnnualMin || 0),
+  ).length;
 
   const total = c.total ?? 0;
   const read = c.assessed ?? 0;
@@ -197,11 +202,15 @@ function renderStats() {
   el('stats').innerHTML = [
     stat(total, 'postings tracked', `${c.new ?? 0} new since the last run`),
     stat(read, 'read and assessed', `${total - read} never opened`),
-    stat(worth, 'worth applying to', `out of the ${read} read, not the ${total}`),
+    // A grade says the work matches, not that the job is worth taking or that he
+    // could get it - pay and reachability are the employer's payBand and
+    // hiringBar. The tile used to say "worth applying to" and that is three
+    // different claims.
+    stat(worth, 'strong or good fit', `out of the ${read} read, not the ${total}`),
     stat(c.strongFit ?? 0, 'strong fits', `out of the ${read} read`),
     stat(c.awaitingAssessment ?? 0, 'queued to read next', 'ranked by keyword score'),
     stat(c.directFromEmployer ?? 0, 'direct from employer', 'not via a job board'),
-    stat(above, `could beat ${money(p.targetTotalAnnualMin)}`, 'declared or modelled'),
+    stat(above, `declare above ${money(p.targetTotalAnnualMin)}`, 'from the posting itself, not modelled'),
   ].join('');
 }
 
@@ -335,8 +344,7 @@ function render() {
     credibility: (a, b) =>
       (b.best.credibility?.score ?? 0) - (a.best.credibility?.score ?? 0) || gradeRank(b.best) - gradeRank(a.best),
     comp: (a, b) =>
-      Math.max(...b.jobs.map((j) => j.salaryEstimate?.totalMax ?? 0)) -
-      Math.max(...a.jobs.map((j) => j.salaryEstimate?.totalMax ?? 0)),
+      declaredMax(b.jobs) - declaredMax(a.jobs),
     date: (a, b) =>
       String(b.jobs[0].postedAt || '').localeCompare(String(a.jobs[0].postedAt || '')),
   }[f.sortBy] || ((a, b) => gradeRank(b.best) - gradeRank(a.best));
@@ -446,7 +454,11 @@ function companyCard(group, { view }) {
   if (tier) badges.append(badge(`tier ${tier}`, tier === 1 ? 'tier1' : ''));
   badges.append(badge(sourceLabel(lead.source)));
 
-  const bestComp = Math.max(...group.jobs.map((j) => j.salaryEstimate?.totalMax ?? 0));
+  // Declared ranges only. Modelled numbers put "up to S$1,176k" in a header.
+  const bestComp = Math.max(
+    0,
+    ...group.jobs.filter((j) => j.salaryEstimate?.origin === 'posting').map((j) => j.salaryEstimate.totalMax ?? 0),
+  );
   node.querySelector('.co-meta').innerHTML = [
     `<span><b>${group.jobs.length}</b> ${group.jobs.length === 1 ? 'role' : 'roles'} here</span>`,
     `<span>${escapeHTML(lead.location || 'Singapore')}</span>`,
@@ -465,7 +477,10 @@ function companyCard(group, { view }) {
       c.gaps?.length
         ? `<div class="a-list a-gap"><b>差距</b><ul>${c.gaps.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul></div>`
         : '',
-      c.compRead ? `<p class="a-comp">${escapeHTML(c.compRead)}</p>` : '',
+      payBandBlock(c.payBand),
+      hiringBarBlock(c.hiringBar),
+      // rubric v1 wrote a single compRead line; v2 replaces it with payBand.
+      !c.payBand && c.compRead ? `<p class="a-comp">${escapeHTML(c.compRead)}</p>` : '',
       c.verdict ? `<p class="a-verdict">${escapeHTML(c.verdict)}</p>` : '',
     ].join('');
   } else {
@@ -570,13 +585,24 @@ function postingCard(job, { view }) {
   if (job.verdict?.note) noteEl.textContent = job.verdict.note;
   else noteEl.remove();
 
+  // Only a range the posting actually declared is shown. The modelled number
+  // was a tier and a title multiplied together, it produced things like "up to
+  // S$1,176k", and the employer's payBand answers the same question honestly.
+  // Postings at an employer with no payBand yet keep the estimate, labelled.
   const s = job.salaryEstimate;
-  const current = DATA.profileSnapshot?.currentTotalAnnual ?? 0;
-  const trend = s.totalMax >= current * 1.1 ? 'up' : s.totalMax < current ? 'down' : '';
-  node.querySelector('.salary').innerHTML = `
-    <span class="amount ${trend}">${money(s.totalMin)} – ${money(s.totalMax)}</span>
-    <span class="tag ${s.origin === 'posting' ? 'declared' : 'modelled'}">${s.origin === 'posting' ? 'declared' : 'estimated'}</span>
-    <span class="note">${escapeHTML(s.note)}</span>`;
+  const declared = s.origin === 'posting';
+  const hasBand = Boolean(job.verdict?.company?.payBand);
+  const salaryEl = node.querySelector('.salary');
+  if (declared || !hasBand) {
+    const current = DATA.profileSnapshot?.currentTotalAnnual ?? 0;
+    const trend = s.totalMax >= current * 1.1 ? 'up' : s.totalMax < current ? 'down' : '';
+    salaryEl.innerHTML = `
+      <span class="amount ${trend}">${money(s.totalMin)} – ${money(s.totalMax)}</span>
+      <span class="tag ${declared ? 'declared' : 'modelled'}">${declared ? 'declared' : 'estimated'}</span>
+      <span class="note">${escapeHTML(s.note)}</span>`;
+  } else {
+    salaryEl.remove();
+  }
 
   const reasons = node.querySelector('.reasons');
   for (const r of (job.reasons || []).slice(0, job.verdict ? 2 : 4)) {
@@ -776,6 +802,50 @@ function renderCounts() {
 }
 
 /* -------------------------------------------------------------- helpers --- */
+
+/**
+ * Pay and reachability, written once per employer.
+ *
+ * They are deliberately two separate blocks, and neither is the fit grade. A
+ * role can be exactly the work he does, pay twice what he earns, and still be
+ * one he would not get past a resume screen - and showing all three at once is
+ * the only way that reads honestly.
+ */
+const PAY_LABEL = {
+  top: '远高于市场',
+  above: '高于市场',
+  market: '与你现在相当',
+  below: '低于你现在',
+};
+function payBandBlock(p) {
+  if (!p) return '';
+  const label = PAY_LABEL[p.level] || p.level;
+  return (
+    `<div class="a-pay pay-${escapeHTML(p.level)}">` +
+    `<b>薪酬</b><span class="pay-level">${escapeHTML(label)}</span>` +
+    `<span class="pay-est">${escapeHTML(p.estimate || '')}</span>` +
+    (p.basis ? `<span class="pay-basis">${escapeHTML(p.basis)}${p.confidence ? ` · 把握 ${escapeHTML(p.confidence)}` : ''}</span>` : '') +
+    (p.note ? `<p class="pay-note">${escapeHTML(p.note)}</p>` : '') +
+    '</div>'
+  );
+}
+
+const BAR_LABEL = {
+  open: '门槛低 — 投了应该有面试',
+  competitive: '够格 — 正常流程能走通',
+  hard: '偏难 — 要和更强的人排队',
+  'long-shot': '很难 — 大概率简历关被刷',
+};
+function hiringBarBlock(h) {
+  if (!h) return '';
+  return (
+    `<div class="a-bar bar-${escapeHTML(h.level)}">` +
+    `<b>能进去吗</b><span class="bar-level">${escapeHTML(BAR_LABEL[h.level] || h.level)}</span>` +
+    (h.why ? `<p class="bar-why">${escapeHTML(h.why)}</p>` : '') +
+    (h.whatWouldHelp ? `<p class="bar-help">怎么办：${escapeHTML(h.whatWouldHelp)}</p>` : '') +
+    '</div>'
+  );
+}
 
 function badge(text, cls = '') {
   const b = document.createElement('span');

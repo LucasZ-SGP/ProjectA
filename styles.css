@@ -445,3 +445,31 @@ body {
   .job-actions .btn { flex: 1 1 auto; }
   .pager { gap: 8px; }
 }
+
+/* ------------------------------------------------- pay and hiring bar --- */
+/* Two facts about the employer, kept visually separate from the fit grade so
+   "great job, cannot get it" and "easy to get, pays less" both read at a
+   glance instead of being averaged into one colour. */
+.a-pay, .a-bar {
+  margin: 7px 0 0; padding: 7px 10px; border-radius: 6px;
+  background: var(--surface-2); font-size: 13px;
+}
+.a-pay b, .a-bar b {
+  display: block; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); margin-bottom: 3px;
+}
+.pay-level, .bar-level { font-weight: 640; }
+.pay-est { margin-left: 8px; }
+.pay-basis { margin-left: 8px; color: var(--muted); font-size: 12px; }
+.pay-note, .bar-why, .bar-help { margin: 4px 0 0; color: var(--muted); }
+.bar-help { color: var(--text); }
+
+.pay-top    { box-shadow: inset 2px 0 0 var(--good); }
+.pay-above  { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--good) 60%, transparent); }
+.pay-market { box-shadow: inset 2px 0 0 var(--muted); }
+.pay-below  { box-shadow: inset 2px 0 0 var(--warn); }
+
+.bar-open        { box-shadow: inset 2px 0 0 var(--good); }
+.bar-competitive { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--good) 60%, transparent); }
+.bar-hard        { box-shadow: inset 2px 0 0 var(--warn); }
+.bar-long-shot   { box-shadow: inset 2px 0 0 var(--bad); }
