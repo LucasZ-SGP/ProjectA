@@ -243,6 +243,29 @@ const GRADE_LABEL = {
 };
 const gradeRank = (j) => (j.verdict ? GRADE_ORDER.indexOf(j.verdict.grade) + 1 : 0);
 
+/**
+ * Every filter except the liveness one. Split out so the "N hidden as likely
+ * closed" count can be the number that filter alone removes, rather than a
+ * number that also silently includes whatever the other filters dropped.
+ */
+function passesExceptLiveness(j, f) {
+  if (!passesGrade(j, f.minGrade)) return false;
+  if ((j.credibility?.score ?? 50) < f.minCred) return false;
+  if (f.hideAgency && j.isAgency) return false;
+  if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
+  if (f.newOnly && !j.isNew) return false;
+  // Only ever filter on a figure the employer actually declared. Modelled
+  // brackets are a placeholder for most postings — no company tier, level and
+  // role inferred from the title — so filtering on them hides real roles on the
+  // strength of a guess. A posting with no declared range is kept and judged on
+  // the company instead.
+  if (f.minComp && j.salaryEstimate?.origin === 'posting' && (j.salaryEstimate?.totalMax ?? 0) < f.minComp) return false;
+  // Company name only. Searching descriptions too meant typing "platform"
+  // returned half the feed, which is what the fit filter is already for.
+  if (f.q && !j.company.toLowerCase().includes(f.q)) return false;
+  return true;
+}
+
 function passesGrade(job, mode) {
   if (mode === 'any') return true;
   if (!job.verdict) return false;              // every other mode wants an assessment
@@ -319,22 +342,8 @@ function render() {
     const cst = coStatusOf(j.companyKey);
     if ((cst === 'saved' || cst === 'dismissed') && !f.showHidden) return false;
 
-    if (!passesGrade(j, f.minGrade)) return false;
-    if ((j.credibility?.score ?? 50) < f.minCred) return false;
-    if (f.hideAgency && j.isAgency) return false;
     if (f.hideStale && j.liveness?.level === 'stale') return false;
-    if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
-    if (f.newOnly && !j.isNew) return false;
-    // Only ever filter on a figure the employer actually declared. Modelled
-    // brackets are a placeholder for most postings — no company tier, level and
-    // role inferred from the title — so filtering on them hides real roles on
-    // the strength of a guess. A posting with no declared range is kept and
-    // judged on the company instead.
-    if (f.minComp && j.salaryEstimate?.origin === 'posting' && (j.salaryEstimate?.totalMax ?? 0) < f.minComp) return false;
-    // Company name only. Searching descriptions too meant typing "platform"
-    // returned half the feed, which is what the fit filter is already for.
-    if (f.q && !j.company.toLowerCase().includes(f.q)) return false;
-    return true;
+    return passesExceptLiveness(j, f);
   });
 
   const groups = groupByCompany(jobs);
@@ -357,9 +366,13 @@ function render() {
   const hasApplied = (g) => g.jobs.some((j) => statusOf(j.id) === 'applied');
   groups.sort((a, b) => hasApplied(b) - hasApplied(a));
 
+  const hiddenStale = f.hideStale
+    ? DATA.jobs.filter((j) => j.liveness?.level === 'stale' && passesExceptLiveness(j, f)).length
+    : 0;
   el('resultCount').textContent =
     `${groups.length} ${groups.length === 1 ? 'company' : 'companies'} · ` +
-    `${jobs.length} ${jobs.length === 1 ? 'role' : 'roles'}`;
+    `${jobs.length} ${jobs.length === 1 ? 'role' : 'roles'}` +
+    (hiddenStale ? ` · ${hiddenStale} hidden as likely closed` : '');
   const page = paginate(groups);
   list.replaceChildren(...page.map((g) => companyCard(g, { view: 'all' })));
   el('collapseAll').textContent = page.every((g) => COLLAPSED[g.key]) ? 'Expand all' : 'Collapse all';
@@ -576,26 +589,21 @@ function postingCard(job, { view }) {
   if (state === 'saved') badges.append(badge('saved', 'saved-badge'));
   if (job.isNew) badges.append(badge('new', 'new'));
 
+  // Whether the advert is probably still open, stated on every posting rather
+  // than only on the bad ones - "no badge" is not an answer anyone can read.
+  // Separate from the fit grade on purpose: an aggregator served a closed Dymon
+  // Asia role for weeks after the employer took it down, and nothing about the
+  // fit had changed.
+  const live = job.liveness;
+  const LIVE_LABEL = { fresh: 'fresh', aging: 'aging', stale: 'may be closed' };
   node.querySelector('.job-meta').innerHTML = [
-    job.postedAt ? `<span>posted ${timeAgo(job.postedAt)}</span>` : '',
+    live
+      ? `<span class="live live-${live.level}" title="${escapeHTML(live.note)}">` +
+        `${LIVE_LABEL[live.level] || live.level} · ${live.ageDays}d on ${escapeHTML(sourceLabel(job.source))}</span>`
+      : job.postedAt ? `<span>posted ${timeAgo(job.postedAt)}</span>` : '',
     job.minYearsExperience != null ? `<span>${job.minYearsExperience}y+ required</span>` : '',
     job.applicants ? `<span>${job.applicants} applicants</span>` : '',
   ].filter(Boolean).join('');
-
-  // Whether the advert is probably still open. Separate from the fit grade on
-  // purpose: an aggregator served a closed Dymon Asia role for weeks after the
-  // employer had taken it down, and nothing about the fit had changed.
-  const live = job.liveness;
-  if (live && live.level !== 'fresh') {
-    const meta = node.querySelector('.job-meta') || node.querySelector('.post-note')?.parentElement;
-    if (meta) {
-      const b = document.createElement('span');
-      b.className = `badge live-${live.level}`;
-      b.textContent = live.level === 'stale' ? 'may be closed' : `${live.ageDays}d old`;
-      b.title = live.note;
-      meta.append(b);
-    }
-  }
 
   // One line on this requisition specifically; the employer read is above.
   const noteEl = node.querySelector('.post-note');

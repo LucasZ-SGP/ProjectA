@@ -474,8 +474,13 @@ body {
 .bar-hard        { box-shadow: inset 2px 0 0 var(--warn); }
 .bar-long-shot   { box-shadow: inset 2px 0 0 var(--bad); }
 
-/* Liveness. Not a judgement about the job - a judgement about the advert. */
-.badge.live-aging { background: var(--surface-2); color: var(--muted); }
-.badge.live-stale {
-  background: color-mix(in srgb, var(--warn) 13%, transparent); color: var(--warn);
+/* Liveness. Not a judgement about the job - a judgement about the advert.
+   Shown on every posting, including the healthy ones, because an absent badge
+   is not something anyone can read an answer out of. */
+.live {
+  font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted);
 }
+.live-fresh { background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good); }
+.live-aging { background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--warn); }
+.live-stale { background: color-mix(in srgb, var(--bad) 11%, transparent); color: var(--bad); }
