@@ -473,3 +473,9 @@ body {
 .bar-competitive { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--good) 60%, transparent); }
 .bar-hard        { box-shadow: inset 2px 0 0 var(--warn); }
 .bar-long-shot   { box-shadow: inset 2px 0 0 var(--bad); }
+
+/* Liveness. Not a judgement about the job - a judgement about the advert. */
+.badge.live-aging { background: var(--surface-2); color: var(--muted); }
+.badge.live-stale {
+  background: color-mix(in srgb, var(--warn) 13%, transparent); color: var(--warn);
+}

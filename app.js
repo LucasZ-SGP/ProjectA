@@ -230,6 +230,7 @@ function currentFilters() {
     sortBy: el('sortBy').value,
     hideAgency: el('hideAgency').checked,
     declaredOnly: el('declaredOnly').checked,
+    hideStale: el('hideStale').checked,
     newOnly: el('newOnly').checked,
     showHidden: el('showHidden').checked,
   };
@@ -321,6 +322,7 @@ function render() {
     if (!passesGrade(j, f.minGrade)) return false;
     if ((j.credibility?.score ?? 50) < f.minCred) return false;
     if (f.hideAgency && j.isAgency) return false;
+    if (f.hideStale && j.liveness?.level === 'stale') return false;
     if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
     if (f.newOnly && !j.isNew) return false;
     // Only ever filter on a figure the employer actually declared. Modelled
@@ -579,6 +581,21 @@ function postingCard(job, { view }) {
     job.minYearsExperience != null ? `<span>${job.minYearsExperience}y+ required</span>` : '',
     job.applicants ? `<span>${job.applicants} applicants</span>` : '',
   ].filter(Boolean).join('');
+
+  // Whether the advert is probably still open. Separate from the fit grade on
+  // purpose: an aggregator served a closed Dymon Asia role for weeks after the
+  // employer had taken it down, and nothing about the fit had changed.
+  const live = job.liveness;
+  if (live && live.level !== 'fresh') {
+    const meta = node.querySelector('.job-meta') || node.querySelector('.post-note')?.parentElement;
+    if (meta) {
+      const b = document.createElement('span');
+      b.className = `badge live-${live.level}`;
+      b.textContent = live.level === 'stale' ? 'may be closed' : `${live.ageDays}d old`;
+      b.title = live.note;
+      meta.append(b);
+    }
+  }
 
   // One line on this requisition specifically; the employer read is above.
   const noteEl = node.querySelector('.post-note');
@@ -975,7 +992,7 @@ for (const tab of document.querySelectorAll('.view-tab')) {
   };
 }
 
-for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'sortBy', 'hideAgency', 'declaredOnly', 'newOnly', 'showHidden']) {
+for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'sortBy', 'hideAgency', 'declaredOnly', 'hideStale', 'newOnly', 'showHidden']) {
   // Any change to the result set puts you back on page 1; staying on page 6 of
   // a list that just became two pages long is never what you meant.
   el(id).addEventListener('input', () => { PAGE = 1; render(); });
@@ -992,6 +1009,7 @@ for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'sortBy', 'hideAgency',
   el('sortBy').value = f.sortBy || 'fit';
   el('hideAgency').checked = f.hideAgency ?? true;
   el('declaredOnly').checked = f.declaredOnly ?? false;
+  el('hideStale').checked = f.hideStale ?? true;
   el('newOnly').checked = f.newOnly ?? false;
   el('showHidden').checked = f.showHidden ?? false;
 })();
