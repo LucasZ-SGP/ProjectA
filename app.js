@@ -228,6 +228,7 @@ function currentFilters() {
     minCred: +el('minCred').value,
     minComp: +el('minComp').value,
     maxAge: +el('maxAge').value,
+    maxBar: el('maxBar').value,
     sortBy: el('sortBy').value,
     hideAgency: el('hideAgency').checked,
     declaredOnly: el('declaredOnly').checked,
@@ -236,6 +237,10 @@ function currentFilters() {
     showHidden: el('showHidden').checked,
   };
 }
+
+// Easiest to hardest. Used as a threshold: "up to competitive" keeps open and
+// competitive and drops the two above them.
+const BAR_ORDER = ['open', 'competitive', 'hard', 'long-shot'];
 
 const GRADE_ORDER = ['avoid', 'unknown', 'weak-fit', 'stretch', 'good-fit', 'strong-fit'];
 const GRADE_LABEL = {
@@ -255,6 +260,17 @@ function passesExceptLiveness(j, f) {
   if (f.hideAgency && j.isAgency) return false;
   if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
   if (f.newOnly && !j.isNew) return false;
+  // How realistic it is that he gets hired there. Company-level, like payBand:
+  // it is a property of the employer, so every posting under that employer
+  // inherits it. Deliberately separate from the fit grade — a Jane Street role
+  // that matches his work exactly is still a long shot, and collapsing the two
+  // into one number is what this whole rubric exists to avoid.
+  if (f.maxBar) {
+    const bar = j.verdict?.company?.hiringBar?.level;
+    // No assessment yet means no honest answer, and the point of narrowing to
+    // "realistic" is to be left with places he could actually get into.
+    if (bar == null || BAR_ORDER.indexOf(bar) > BAR_ORDER.indexOf(f.maxBar)) return false;
+  }
   // Posted within the last N days. Applied to the posting, not the company: a
   // company survives because one of its roles is recent, and only that role is
   // listed under it. Postings with no date are excluded rather than assumed
@@ -1016,7 +1032,7 @@ for (const tab of document.querySelectorAll('.view-tab')) {
   };
 }
 
-for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'maxAge', 'sortBy', 'hideAgency', 'declaredOnly', 'hideStale', 'newOnly', 'showHidden']) {
+for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'maxAge', 'maxBar', 'sortBy', 'hideAgency', 'declaredOnly', 'hideStale', 'newOnly', 'showHidden']) {
   // Any change to the result set puts you back on page 1; staying on page 6 of
   // a list that just became two pages long is never what you meant.
   el(id).addEventListener('input', () => { PAGE = 1; render(); });
@@ -1031,6 +1047,7 @@ for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'maxAge', 'sortBy', 'hi
   el('minCred').value = f.minCred ?? 40;
   el('minComp').value = f.minComp ?? 160000;
   el('maxAge').value = f.maxAge ?? 0;
+  el('maxBar').value = f.maxBar ?? '';
   el('sortBy').value = f.sortBy || 'fit';
   el('hideAgency').checked = f.hideAgency ?? true;
   el('declaredOnly').checked = f.declaredOnly ?? false;
