@@ -227,6 +227,7 @@ function currentFilters() {
     minGrade: el('minGrade').value,
     minCred: +el('minCred').value,
     minComp: +el('minComp').value,
+    maxAge: +el('maxAge').value,
     sortBy: el('sortBy').value,
     hideAgency: el('hideAgency').checked,
     declaredOnly: el('declaredOnly').checked,
@@ -254,6 +255,14 @@ function passesExceptLiveness(j, f) {
   if (f.hideAgency && j.isAgency) return false;
   if (f.declaredOnly && j.salaryEstimate?.origin !== 'posting') return false;
   if (f.newOnly && !j.isNew) return false;
+  // Posted within the last N days. Applied to the posting, not the company: a
+  // company survives because one of its roles is recent, and only that role is
+  // listed under it. Postings with no date are excluded rather than assumed
+  // recent — an unknown date is exactly the case this filter exists to avoid.
+  if (f.maxAge) {
+    const age = j.liveness?.ageDays ?? j.ageDays;
+    if (age == null || age > f.maxAge) return false;
+  }
   // Only ever filter on a figure the employer actually declared. Modelled
   // brackets are a placeholder for most postings — no company tier, level and
   // role inferred from the title — so filtering on them hides real roles on the
@@ -879,11 +888,18 @@ function badge(text, cls = '') {
   return b;
 }
 
+// Every source the feed can produce. The liveness chip prints one of these on
+// every posting, so a missing entry showed up as a bare lowercase "adzuna" next
+// to a properly cased "MyCareersFuture".
 const SOURCE_LABEL = {
   mycareersfuture: 'MyCareersFuture',
   greenhouse: 'Greenhouse',
   lever: 'Lever',
   ashby: 'Ashby',
+  workday: 'Workday',
+  smartrecruiters: 'SmartRecruiters',
+  adzuna: 'Adzuna',
+  hackernews: 'Hacker News',
 };
 const sourceLabel = (s) => SOURCE_LABEL[s] || s;
 
@@ -1000,7 +1016,7 @@ for (const tab of document.querySelectorAll('.view-tab')) {
   };
 }
 
-for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'sortBy', 'hideAgency', 'declaredOnly', 'hideStale', 'newOnly', 'showHidden']) {
+for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'maxAge', 'sortBy', 'hideAgency', 'declaredOnly', 'hideStale', 'newOnly', 'showHidden']) {
   // Any change to the result set puts you back on page 1; staying on page 6 of
   // a list that just became two pages long is never what you meant.
   el(id).addEventListener('input', () => { PAGE = 1; render(); });
@@ -1014,6 +1030,7 @@ for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'sortBy', 'hideAgency',
   el('minGrade').value = f.minGrade ?? 'good-fit';
   el('minCred').value = f.minCred ?? 40;
   el('minComp').value = f.minComp ?? 160000;
+  el('maxAge').value = f.maxAge ?? 0;
   el('sortBy').value = f.sortBy || 'fit';
   el('hideAgency').checked = f.hideAgency ?? true;
   el('declaredOnly').checked = f.declaredOnly ?? false;

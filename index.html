@@ -131,6 +131,15 @@
     </select>
   </label>
 
+  <label class="ctl" title="Filters individual postings by how long ago the employer posted them. The company grouping stays — a company is shown when at least one of its postings is inside the window, and only those postings are listed under it.">Posted
+    <select id="maxAge">
+      <option value="0" selected>Any time</option>
+      <option value="7">Last 7 days</option>
+      <option value="14">Last 14 days</option>
+      <option value="30">Last 30 days</option>
+    </select>
+  </label>
+
   <label class="ctl">Sort
     <select id="sortBy">
       <option value="fit">Fit, then score</option>
