@@ -620,7 +620,10 @@ function postingCard(job, { view }) {
   // Asia role for weeks after the employer took it down, and nothing about the
   // fit had changed.
   const live = job.liveness;
-  const LIVE_LABEL = { fresh: 'fresh', aging: 'aging', stale: 'may be closed' };
+  // "may be closed" is a claim about the advert being dead, so only aggregator
+  // postings and confirmed closures get it. A role that has sat on the
+  // employer's own board for four months is long-listed: still there, just slow.
+  const LIVE_LABEL = { fresh: 'fresh', aging: 'aging', 'long-listed': 'long-listed', stale: 'may be closed' };
   node.querySelector('.job-meta').innerHTML = [
     live
       ? `<span class="live live-${live.level}" title="${escapeHTML(live.note)}">` +

@@ -483,4 +483,5 @@ body {
 }
 .live-fresh { background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good); }
 .live-aging { background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--warn); }
+.live-long-listed { background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--warn); }
 .live-stale { background: color-mix(in srgb, var(--bad) 11%, transparent); color: var(--bad); }
