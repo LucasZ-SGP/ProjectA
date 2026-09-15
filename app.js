@@ -917,6 +917,7 @@ const SOURCE_LABEL = {
   ashby: 'Ashby',
   workday: 'Workday',
   smartrecruiters: 'SmartRecruiters',
+  successfactors: 'SuccessFactors',
   adzuna: 'Adzuna',
   hackernews: 'Hacker News',
 };
