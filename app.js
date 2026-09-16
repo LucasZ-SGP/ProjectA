@@ -918,6 +918,7 @@ const SOURCE_LABEL = {
   workday: 'Workday',
   smartrecruiters: 'SmartRecruiters',
   successfactors: 'SuccessFactors',
+  careersgov: 'Careers@Gov',
   adzuna: 'Adzuna',
   hackernews: 'Hacker News',
 };
