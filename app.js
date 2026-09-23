@@ -919,6 +919,7 @@ const SOURCE_LABEL = {
   smartrecruiters: 'SmartRecruiters',
   successfactors: 'SuccessFactors',
   careersgov: 'Careers@Gov',
+  oraclecloud: 'Company careers site',
   adzuna: 'Adzuna',
   hackernews: 'Hacker News',
 };
