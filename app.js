@@ -211,6 +211,7 @@ function renderStats() {
     stat(c.awaitingAssessment ?? 0, 'queued to read next', 'ranked by keyword score'),
     stat(c.directFromEmployer ?? 0, 'direct from employer', 'not via a job board'),
     stat(above, `declare above ${money(p.targetTotalAnnualMin)}`, 'from the posting itself, not modelled'),
+    stat(c.byRegion?.hk ?? 0, 'in Hong Kong', 'listed after Singapore when fit is equal'),
   ].join('');
 }
 
@@ -224,6 +225,7 @@ const stat = (v, k, note) =>
 function currentFilters() {
   return {
     q: el('q').value.trim().toLowerCase(),
+    region: el('region').value,
     minGrade: el('minGrade').value,
     minCred: +el('minCred').value,
     minComp: +el('minComp').value,
@@ -249,12 +251,19 @@ const GRADE_LABEL = {
 };
 const gradeRank = (j) => (j.verdict ? GRADE_ORDER.indexOf(j.verdict.grade) + 1 : 0);
 
+// Singapore before Hong Kong when fit is equal: 「新加坡优先 不过都列出来」.
+// Postings stored before regions existed carry none and are Singapore.
+const REGION_RANK = { sg: 0, hk: 1 };
+const regionOf = (j) => j.region || 'sg';
+const regionRank = (j) => REGION_RANK[regionOf(j)] ?? 9;
+
 /**
  * Every filter except the liveness one. Split out so the "N hidden as likely
  * closed" count can be the number that filter alone removes, rather than a
  * number that also silently includes whatever the other filters dropped.
  */
 function passesExceptLiveness(j, f) {
+  if (f.region && regionOf(j) !== f.region) return false;
   if (!passesGrade(j, f.minGrade)) return false;
   if ((j.credibility?.score ?? 50) < f.minCred) return false;
   if (f.hideAgency && j.isAgency) return false;
@@ -317,7 +326,7 @@ function groupByCompany(jobs) {
     groups.get(j.companyKey).jobs.push(j);
   }
   for (const g of groups.values()) {
-    g.jobs.sort((x, y) => gradeRank(y) - gradeRank(x) || y.keywordScore - x.keywordScore);
+    g.jobs.sort((x, y) => gradeRank(y) - gradeRank(x) || regionRank(x) - regionRank(y) || y.keywordScore - x.keywordScore);
     g.best = g.jobs[0];
   }
   return [...groups.values()];
@@ -376,7 +385,10 @@ function render() {
   // Companies are ranked by their best posting, because that is the one that
   // decides whether the company is worth opening at all.
   const cmp = {
-    fit: (a, b) => gradeRank(b.best) - gradeRank(a.best) || b.best.keywordScore - a.best.keywordScore,
+    fit: (a, b) =>
+      gradeRank(b.best) - gradeRank(a.best) ||
+      regionRank(a.best) - regionRank(b.best) ||
+      b.best.keywordScore - a.best.keywordScore,
     credibility: (a, b) =>
       (b.best.credibility?.score ?? 0) - (a.best.credibility?.score ?? 0) || gradeRank(b.best) - gradeRank(a.best),
     comp: (a, b) =>
@@ -492,6 +504,8 @@ function companyCard(group, { view }) {
   else if (lead.postedByRecruiter) badges.append(badge('via recruiter'));
   const tier = lead.companyTier ?? company?.tier;
   if (tier) badges.append(badge(`tier ${tier}`, tier === 1 ? 'tier1' : ''));
+  const regions = new Set(group.jobs.map(regionOf));
+  if (regions.has('hk')) badges.append(badge(regions.has('sg') ? 'SG + Hong Kong' : 'Hong Kong', 'hk'));
   badges.append(badge(sourceLabel(lead.source)));
 
   // Declared ranges only. Modelled numbers put "up to S$1,176k" in a header.
@@ -501,7 +515,7 @@ function companyCard(group, { view }) {
   );
   node.querySelector('.co-meta').innerHTML = [
     `<span><b>${group.jobs.length}</b> ${group.jobs.length === 1 ? 'role' : 'roles'} here</span>`,
-    `<span>${escapeHTML(lead.location || 'Singapore')}</span>`,
+    `<span>${escapeHTML(lead.location || (regionOf(lead) === 'hk' ? 'Hong Kong' : 'Singapore'))}</span>`,
     bestComp ? `<span>up to ${money(bestComp)}</span>` : '',
   ].filter(Boolean).join('');
 
@@ -613,6 +627,7 @@ function postingCard(job, { view }) {
   if (state === 'applied') badges.append(badge(`applied ${JOB_STATE[job.id].at || ''}`.trim(), 'applied-badge'));
   if (state === 'saved') badges.append(badge('saved', 'saved-badge'));
   if (job.isNew) badges.append(badge('new', 'new'));
+  if (regionOf(job) === 'hk') badges.append(badge('Hong Kong', 'hk'));
 
   // Whether the advert is probably still open, stated on every posting rather
   // than only on the bad ones - "no badge" is not an answer anyone can read.
@@ -649,8 +664,14 @@ function postingCard(job, { view }) {
   if (declared || !hasBand) {
     const current = DATA.profileSnapshot?.currentTotalAnnual ?? 0;
     const trend = s.totalMax >= current * 1.1 ? 'up' : s.totalMax < current ? 'down' : '';
+    // A Hong Kong posting reads in HK$, with the S$ figure it was compared on
+    // beside it.
+    const amount = s.local
+      ? `${moneyIn(s.local.totalMin, s.local.currency)} – ${moneyIn(s.local.totalMax, s.local.currency)} ` +
+        `<span class="local-sgd">≈ ${money(s.totalMin)} – ${money(s.totalMax)}</span>`
+      : `${money(s.totalMin)} – ${money(s.totalMax)}`;
     salaryEl.innerHTML = `
-      <span class="amount ${trend}">${money(s.totalMin)} – ${money(s.totalMax)}</span>
+      <span class="amount ${trend}">${amount}</span>
       <span class="tag ${declared ? 'declared' : 'modelled'}">${declared ? 'declared' : 'estimated'}</span>
       <span class="note">${escapeHTML(s.note)}</span>`;
   } else {
@@ -930,6 +951,14 @@ function money(n) {
   return 'S$' + Math.round(n / 1000) + 'k';
 }
 
+/** HK$1.2M, HK$850k. Only Hong Kong uses it today. */
+function moneyIn(n, currency) {
+  if (!n) return '—';
+  const sym = currency === 'HKD' ? 'HK$' : currency === 'SGD' ? 'S$' : `${currency} `;
+  const k = Math.round(n / 1000);
+  return k >= 1000 ? `${sym}${(k / 1000).toFixed(2).replace(/\.?0+$/, '')}M` : `${sym}${k}k`;
+}
+
 function timeAgo(iso) {
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return iso;
@@ -1038,7 +1067,7 @@ for (const tab of document.querySelectorAll('.view-tab')) {
   };
 }
 
-for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'maxAge', 'maxBar', 'sortBy', 'hideAgency', 'declaredOnly', 'hideStale', 'newOnly', 'showHidden']) {
+for (const id of ['q', 'region', 'minGrade', 'minCred', 'minComp', 'maxAge', 'maxBar', 'sortBy', 'hideAgency', 'declaredOnly', 'hideStale', 'newOnly', 'showHidden']) {
   // Any change to the result set puts you back on page 1; staying on page 6 of
   // a list that just became two pages long is never what you meant.
   el(id).addEventListener('input', () => { PAGE = 1; render(); });
@@ -1049,6 +1078,7 @@ for (const id of ['q', 'minGrade', 'minCred', 'minComp', 'maxAge', 'maxBar', 'so
   const f = store.get(LS.filters, null);
   if (!f) return;
   el('q').value = f.q || '';
+  el('region').value = f.region || '';
   el('minGrade').value = f.minGrade ?? 'good-fit';
   el('minCred').value = f.minCred ?? 40;
   el('minComp').value = f.minComp ?? 160000;

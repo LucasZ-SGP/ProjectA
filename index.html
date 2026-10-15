@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>SG Job Dashboard</title>
+<title>SG · HK Job Dashboard</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -13,7 +13,7 @@
 <header class="topbar">
   <div class="brand">
     <span class="dot" id="statusDot"></span>
-    <h1>SG Job Dashboard</h1>
+    <h1>SG · HK Job Dashboard</h1>
     <span class="stamp" id="generatedAt"></span>
   </div>
   <div class="topbar-actions">
@@ -102,6 +102,14 @@
 <section id="controls" class="controls" hidden>
   <input id="q" type="search" placeholder="Search company name…" autocomplete="off">
 
+  <label class="ctl" title="Hong Kong was added on 15 October 2026. With both shown, Singapore comes first wherever fit is equal: in the company order and in the order of roles under a company.">Market
+    <select id="region">
+      <option value="" selected>Singapore + Hong Kong</option>
+      <option value="sg">Singapore only</option>
+      <option value="hk">Hong Kong only</option>
+    </select>
+  </label>
+
   <label class="ctl">Fit
     <select id="minGrade">
       <option value="any">any, including unassessed</option>
@@ -124,6 +132,7 @@
   <label class="ctl">Min total comp
     <select id="minComp">
       <option value="0">any</option>
+      <option value="68000">S$68k (HK$400k, your HK floor)</option>
       <option value="140000">S$140k</option>
       <option value="160000" selected>S$160k (your current)</option>
       <option value="175000">S$175k (your target)</option>

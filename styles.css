@@ -380,6 +380,8 @@ body {
 .badge.new { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
 .badge.agency { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .badge.tier1 { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.badge.hk { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.salary .local-sgd { color: var(--muted, inherit); opacity: .75; font-size: .9em; }
 
 .job-meta { font-size: 13px; color: var(--muted); margin-top: 3px; }
 .job-meta span + span::before { content: "·"; margin: 0 7px; }
